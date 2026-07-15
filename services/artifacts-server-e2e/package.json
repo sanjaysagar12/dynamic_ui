@@ -1,0 +1,26 @@
+{
+  "name": "@org/artifacts-server-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "implicitDependencies": [
+      "@org/artifacts-server"
+    ],
+    "targets": {
+      "e2e": {
+        "executor": "@nx/jest:jest",
+        "outputs": [
+          "{projectRoot}/test-output/jest/coverage"
+        ],
+        "dependsOn": [
+          "@org/artifacts-server:build",
+          "@org/artifacts-server:serve"
+        ],
+        "options": {
+          "jestConfig": "artifacts-server-e2e/jest.config.cts",
+          "passWithNoTests": true
+        }
+      }
+    }
+  }
+}

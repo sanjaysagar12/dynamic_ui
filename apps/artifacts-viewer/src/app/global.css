@@ -1,0 +1,10 @@
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+#__next {
+  height: 100%;
+}

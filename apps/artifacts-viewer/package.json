@@ -1,0 +1,27 @@
+{
+  "name": "@org/artifacts-viewer",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "name": "artifacts-viewer",
+    "targets": {
+      "dev": {
+        "options": {
+          "command": "next dev -p 4200"
+        }
+      },
+      "start": {
+        "options": {
+          "command": "next start -p 4200"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "next": "~16.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "server-only": "^0.0.1",
+    "@org/shared-auth": "*"
+  }
+}

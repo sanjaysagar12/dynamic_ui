@@ -2,7 +2,20 @@
   "extends": "./tsconfig.base.json",
   "compileOnSave": false,
   "files": [],
-  "references": [],
+  "references": [
+    {
+      "path": "./services/artifacts-server"
+    },
+    {
+      "path": "./packages/shared-auth"
+    },
+    {
+      "path": "./services/backend-server"
+    },
+    {
+      "path": "./apps/artifacts-viewer"
+    }
+  ],
   "compilerOptions": {
     "ignoreDeprecations": "6.0"
   }

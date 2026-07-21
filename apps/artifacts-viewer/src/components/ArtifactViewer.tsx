@@ -5,16 +5,18 @@ import Link from 'next/link';
 import type { Role } from '@org/shared-auth';
 import { useArtifactToken } from '../hooks/useArtifactToken';
 import { useArtifactCatalog } from '../hooks/useArtifactCatalog';
-import { buildArtifactUrl } from '../lib/artifacts/artifact-url';
+import { useArtifactSrc } from '../hooks/useArtifactSrc';
 import { RoleSwitcher } from './RoleSwitcher';
 import { ArtifactSelector } from './ArtifactSelector';
 import { ArtifactFrame } from './ArtifactFrame';
+import { SupabaseSessionWidget } from './supabase/SupabaseSessionWidget';
 
 export function ArtifactViewer() {
   const [role, setRole] = useState<Role>('manager');
   const [artifactPath, setArtifactPath] = useState('');
   const { token, loading, error } = useArtifactToken(role);
   const { artifacts, loading: catalogLoading, error: catalogError } = useArtifactCatalog(role);
+  const artifactSrc = useArtifactSrc(artifactPath, token);
 
   useEffect(() => {
     if (catalogLoading) return;
@@ -26,12 +28,13 @@ export function ArtifactViewer() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <header style={{ display: 'flex', gap: '2rem', alignItems: 'center', padding: '1rem' }}>
+      <header style={{ display: 'flex', gap: '2rem', alignItems: 'center', padding: '1rem', flexWrap: 'wrap' }}>
         <RoleSwitcher role={role} onChange={setRole} />
         <ArtifactSelector artifacts={artifacts} artifactPath={artifactPath} onChange={setArtifactPath} />
         <span>
           Current role: <strong>{role}</strong>
         </span>
+        <SupabaseSessionWidget />
         <Link href="/chat" style={{ marginLeft: 'auto' }}>
           AI Chat →
         </Link>
@@ -44,9 +47,9 @@ export function ArtifactViewer() {
         {!catalogLoading && artifacts.length === 0 && !catalogError && (
           <p style={{ padding: '1rem', color: '#888' }}>No artifacts available for role &quot;{role}&quot;.</p>
         )}
-        {token && artifactPath && !loading && !error && (
+        {artifactSrc && (
           <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-            <ArtifactFrame src={buildArtifactUrl(artifactPath, token)} title={artifactPath} />
+            <ArtifactFrame src={artifactSrc} title={artifactPath} />
           </div>
         )}
       </main>

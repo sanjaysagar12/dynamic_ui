@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, waitFor } from '@testing-library/react';
 import Page from '../src/app/page';
+import { SupabaseSessionProvider } from '../src/lib/supabase/supabase-session-context';
 
 describe('Page', () => {
   beforeEach(() => {
@@ -19,7 +20,11 @@ describe('Page', () => {
   });
 
   it('should render successfully', async () => {
-    const { baseElement } = render(<Page />);
+    const { baseElement } = render(
+      <SupabaseSessionProvider>
+        <Page />
+      </SupabaseSessionProvider>,
+    );
     await waitFor(() => expect(baseElement.querySelector('iframe')).toBeTruthy());
   });
 });

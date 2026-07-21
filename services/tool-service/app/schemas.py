@@ -37,3 +37,18 @@ class ArtifactCatalogEntry(BaseModel):
 
 class ListArtifactsResponse(BaseModel):
     artifacts: list[ArtifactCatalogEntry]
+
+
+class ColumnSchema(BaseModel):
+    name: str
+    type: str
+    nullable: bool
+
+
+class TableSchema(BaseModel):
+    table: str
+    columns: list[ColumnSchema]
+
+
+class GetSchemaResponse(BaseModel):
+    tables: list[TableSchema]

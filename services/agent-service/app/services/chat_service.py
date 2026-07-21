@@ -12,7 +12,7 @@ class ChatArtifactService:
 
     def chat(self, request: ChatRequest) -> ChatResponse:
         provider = request.provider or self._settings.default_provider
-        client = get_llm_client(provider, request.model, self._settings)
+        client = get_llm_client(provider, request.model, self._settings, self._tool_client)
 
         context_files: dict[str, str] | None = None
         if request.slug:

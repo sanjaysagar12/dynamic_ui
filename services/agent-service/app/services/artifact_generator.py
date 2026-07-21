@@ -12,7 +12,7 @@ class ArtifactGeneratorService:
 
     def generate(self, request: GenerateArtifactRequest) -> GenerateArtifactResponse:
         provider = request.provider or self._settings.default_provider
-        client = get_llm_client(provider, request.model, self._settings)
+        client = get_llm_client(provider, request.model, self._settings, self._tool_client)
 
         spec = client.generate(
             messages=[ChatMessage(role="user", content=request.prompt)],

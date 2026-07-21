@@ -34,3 +34,10 @@ class ToolServiceClient:
             detail = response.json().get("detail", response.text) if response.text else response.text
             raise ToolServiceError(str(detail), response.status_code)
         return response.json()
+
+    def get_schema(self) -> list[dict]:
+        response = httpx.get(f"{self._base_url}/tools/get-schema", timeout=15.0)
+        if response.is_error:
+            detail = response.json().get("detail", response.text) if response.text else response.text
+            raise ToolServiceError(str(detail), response.status_code)
+        return response.json()["tables"]

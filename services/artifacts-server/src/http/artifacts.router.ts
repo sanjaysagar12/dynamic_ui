@@ -22,6 +22,11 @@ export function createArtifactsRouter(artifactService: ArtifactService): Router 
 
       if (result.token && HTML_EXTENSIONS.has(extname(result.filePath).toLowerCase())) {
         const html = await readFile(result.filePath, 'utf-8');
+        // Artifacts must never make outbound network calls of their own — all
+        // persisted-data access goes through the parent's postMessage bridge.
+        // The iframe sandbox attribute doesn't restrict fetch/XHR/WebSocket by
+        // itself, so this CSP is what actually closes that gap.
+        res.setHeader('Content-Security-Policy', "connect-src 'none'");
         res.type('html').send(rewriteRelativeUrlsWithToken(html, result.token));
         return;
       }

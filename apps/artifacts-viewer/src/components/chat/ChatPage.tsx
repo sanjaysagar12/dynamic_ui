@@ -5,12 +5,13 @@ import Link from 'next/link';
 import type { Role } from '@org/shared-auth';
 import { useArtifactToken } from '../../hooks/useArtifactToken';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
-import { buildArtifactUrl } from '../../lib/artifacts/artifact-url';
+import { useArtifactSrc } from '../../hooks/useArtifactSrc';
 import { fetchProviders, sendChatMessage, ChatRequestError } from '../../lib/api/chat-client';
 import type { ChatMessage, Provider, ProviderInfo } from '../../lib/chat/types';
 import type { ArtifactCatalogEntry } from '../../lib/artifacts/types';
 import { RoleSwitcher } from '../RoleSwitcher';
 import { ArtifactFrame } from '../ArtifactFrame';
+import { SupabaseSessionWidget } from '../supabase/SupabaseSessionWidget';
 import { ProviderSelector } from './ProviderSelector';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatComposer } from './ChatComposer';
@@ -29,6 +30,7 @@ export function ChatPage() {
 
   const { token } = useArtifactToken(role);
   const { artifacts } = useArtifactCatalog(role);
+  const artifactSrc = useArtifactSrc(urlPath ?? '', token);
 
   useEffect(() => {
     fetchProviders()
@@ -103,6 +105,7 @@ export function ChatPage() {
             </button>
           </div>
           <ProviderSelector providers={providers} provider={provider} onChange={setProvider} />
+          <SupabaseSessionWidget />
           {slug && (
             <span style={{ fontSize: '0.85rem', color: '#555' }}>
               Editing: <strong>{slug}</strong>
@@ -126,9 +129,9 @@ export function ChatPage() {
               Read-only preview — click <strong>Edit</strong> on this artifact to modify it.
             </p>
           )}
-          {urlPath && token && (
+          {artifactSrc && (
             <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-              <ArtifactFrame src={buildArtifactUrl(urlPath, token)} title={slug ?? 'artifact preview'} />
+              <ArtifactFrame src={artifactSrc} title={slug ?? 'artifact preview'} />
             </div>
           )}
         </main>

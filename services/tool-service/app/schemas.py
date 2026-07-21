@@ -27,3 +27,13 @@ class ReadArtifactResponse(BaseModel):
     roles: list[Role]
     title: str | None
     files: dict[str, str]
+
+
+class ArtifactCatalogEntry(BaseModel):
+    slug: str
+    title: str
+    roles: list[Role]
+
+
+class ListArtifactsResponse(BaseModel):
+    artifacts: list[ArtifactCatalogEntry]

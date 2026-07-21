@@ -1,20 +1,21 @@
 # Dynamic UI — Architecture Overview
 
-This Nx workspace implements an **Artifacts platform**: a static-file server that serves role-gated "artifacts" (self-contained HTML/CSS/JS bundles) similarly to Apache, a backend that issues development JWTs, an AI agent that generates and updates those artifacts from a chat prompt (Claude or Gemini), and a Next.js viewer with both a manual role-switching viewer and an AI chat page.
+This Nx workspace implements an **Artifacts platform**: a static-file server that serves role-gated "artifacts" (self-contained HTML/CSS/JS bundles) similarly to Apache, a backend that issues development JWTs, a Supabase middle layer that holds the only database credentials in the system, an AI agent that generates and updates artifacts from a chat prompt (Claude or Gemini) using a real-schema-aware tool, and a Next.js viewer that renders artifacts in a sandboxed iframe and mediates their data access over `postMessage`.
 
 ```
 apps/
-  artifacts-viewer/     Next.js app — role switcher + sandboxed iframe viewer, plus an AI chat page (port 4200)
+  artifacts-viewer/     Next.js app — role switcher, AI chat page, sandboxed iframe viewer + postMessage data bridge (port 4200)
 services/
-  artifacts-server/     Express app — serves artifacts, enforces JWT auth + role authorization (port 3000)
+  artifacts-server/     Express app — serves artifacts, enforces JWT auth + role authorization + a locked-down CSP (port 3000)
   backend-server/        Express app — issues development JWTs (port 3334)
-  tool-service/          Python/FastAPI app — writes/reads artifact files on disk (port 5001)
-  agent-service/         Python/FastAPI app — turns a chat prompt into an artifact via Claude or Gemini (port 5002)
+  supabase-service/      Express app — anon-key-only middle layer between the parent app and Supabase (port 3335)
+  tool-service/          Python/FastAPI app — writes/reads artifact files on disk, and is the only holder of the Supabase secret key (schema introspection) (port 5001)
+  agent-service/         Python/FastAPI app — turns a chat prompt into an artifact via Claude or Gemini, using a get_schema tool (port 5002)
 packages/
   shared-auth/           Shared TypeScript library — Role types + JWT signing/verification
 ```
 
-All five run independently and talk to each other only over HTTP; there is no shared runtime state.
+All six services run independently and talk to each other only over HTTP; there is no shared runtime state.
 
 ---
 
@@ -77,8 +78,11 @@ artifacts/
       manifest.json     { "roles": ["admin"] }
       assets/style.css
       assets/app.js
+  _shared/
+    manifest.json       { "roles": ["admin", "manager"] }
+    tailwind.min.css    vendored offline Tailwind CSS build, shared by every artifact
 ```
-`/dashboard/` and `/admin/users/` map 1:1 to `GET /dashboard/` and `GET /admin/users/` on the server. Nested asset requests (e.g. `/admin/users/assets/app.js`) resolve against the nearest ancestor directory that has a `manifest.json`, so an artifact's whole subtree shares one manifest.
+`/dashboard/` and `/admin/users/` map 1:1 to `GET /dashboard/` and `GET /admin/users/` on the server. Nested asset requests (e.g. `/admin/users/assets/app.js`) resolve against the nearest ancestor directory that has a `manifest.json`, so an artifact's whole subtree shares one manifest. `_shared/` (and any other `_`-prefixed folder) rides the same manifest-gated resolution/auth pipeline as a real artifact — any authenticated user can fetch `/_shared/tailwind.min.css` — but is excluded from the public artifact catalog (see `artifact-catalog.service.ts`), so it never shows up as a selectable artifact in the UI.
 
 **Request pipeline**, each concern in its own class:
 
@@ -89,37 +93,75 @@ artifacts/
 | `auth/authentication-provider.ts` + `jwt-authentication-provider.ts` | `AuthenticationProvider` interface with a JWT implementation — reads a Bearer header **or** a `?token=` query param (iframe `src` navigations can't set headers). |
 | `authorization/authorization-strategy.ts` + `role-authorization-strategy.ts` | `AuthorizationStrategy` interface; the current implementation checks the authenticated role against `manifest.roles`. |
 | `service/artifact-service.ts` | Orchestrates resolve → load manifest → authenticate → authorize. |
-| `http/artifacts.router.ts` | Express router; maps errors to `401` (no/invalid token), `403` (role not permitted), `404` (artifact not found). |
+| `service/artifact-catalog.service.ts` | Walks the artifacts tree for the public catalog (`GET /api/artifacts`), skipping any path segment starting with `_`. |
+| `http/artifacts.router.ts` | Express router; maps errors to `401` (no/invalid token), `403` (role not permitted), `404` (artifact not found); sets `Content-Security-Policy: connect-src 'none'` on every served HTML document. |
+| `http/html-token-rewriter.ts` | Appends the auth token to every relative `href`/`src` in served HTML, since the browser's own sub-resource requests (`<link>`, `<script>`) never see the query-param token a top-level iframe navigation carries. |
 
 Both `AuthenticationProvider` and `AuthorizationStrategy` are interfaces specifically so new auth methods (API keys, sessions) or authorization rules (ABAC, per-user overrides) can be added without touching the rest of the pipeline.
 
 **Config** (`config.ts`): `PORT` (default `3000`), `ARTIFACTS_ROOT` (default `<project>/artifacts`), `JWT_SECRET`, `JWT_ISSUER` (default `backend-server` — **must match** `backend-server`'s issuer for token verification to succeed).
 
+**Security note — CSP:** the iframe `sandbox` attribute alone does not restrict outbound network calls (fetch/XHR/WebSocket) from artifact JS, only DOM/storage/navigation. `Content-Security-Policy: connect-src 'none'` on every artifact HTML response is what actually closes that gap — see `artifacts/sandbox-security-test/` for a live artifact that deliberately attempts every attack this is meant to block (localStorage/sessionStorage/cookies, parent-DOM access, external fetch, and direct calls to `supabase-service`/the parent's `/api/data`) and reports whether each was actually blocked.
+
 ---
 
-## 4. `services/tool-service` (port 5001, Python/FastAPI)
+## 4. `services/supabase-service` (port 3335)
 
-The only thing in the system with filesystem write access to `services/artifacts-server/artifacts/`. Exists so the AI agent (or anything else) manipulates artifacts through a narrow, validated API rather than touching disk directly.
+The **only** thing in the system that talks to Supabase at request time, and it does so using **only the Supabase anon/publishable key** — never a secret/service-role key. It sits between the parent app (`artifacts-viewer`) and Supabase: the parent logs a user in through here (getting back a Supabase JWT + user id), then makes every subsequent data request through here, attaching that same user JWT so Postgres Row-Level Security — not this service — is what actually scopes what a caller can read or write.
+
+**Endpoints:**
+```
+POST /auth/signup   { email, password }  → creates a Supabase user, returns { accessToken, userId, email }
+POST /auth/login    { email, password }  → signs in, returns { accessToken, userId, email }
+GET  /data/:table              ?column=value&order=col.asc|desc&limit=n   → { data: [...] }  (list, RLS-scoped)
+POST /data/:table   { ...fields }                                          → the created row (bare, not wrapped)
+PATCH /data/:table/:id  { ...fields }                                      → the updated row (bare, not wrapped)
+DELETE /data/:table/:id                                                    → 204 no body
+GET  /health
+```
+`:table` is schema-agnostic (validated against a plain identifier regex) — this works against any table, not a hardcoded one. In `/data/:table` list requests, every query-string key is treated as an exact-match column filter **except** two reserved keys: `order` (`column.asc` / `column.desc`) and `limit` (row count) — see `data/records.service.ts`.
+
+**Structure:**
+- `supabase/supabase-client-factory.ts` — `SupabaseClientFactory`: builds a `@supabase/supabase-js` client scoped to a specific user by attaching `global.headers.Authorization: Bearer <user JWT>` (not `.auth.setSession()`), always constructed with the anon key
+- `auth/auth.service.ts` / `auth.controller.ts` — sign-up/sign-in against Supabase Auth
+- `auth/require-supabase-auth.ts` — middleware requiring a valid `Authorization: Bearer <token>` + `X-User-Id` header on `/data/*`
+- `data/records.service.ts` — `RecordsService`: the generic list/create/update/remove proxy described above
+- `data/records.controller.ts` — Express router wiring the above to HTTP verbs
+- `config.ts` — `PORT` (default `3335`), `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+
+**Why no `/schema` endpoint here:** Supabase's own schema/OpenAPI introspection endpoint rejects anon keys outright ("Secret API key required"), which conflicts with this service's anon-key-only design. Schema introspection was moved to `tool-service` instead (§5), which is allowed to hold a secret key because it's never in the runtime request path for artifact data.
+
+---
+
+## 5. `services/tool-service` (port 5001, Python/FastAPI)
+
+The only thing in the system with filesystem write access to `services/artifacts-server/artifacts/`, **and** the only thing in the system that holds the Supabase **secret** key. Both exist so the AI agent manipulates artifacts and looks up real schema through a narrow, validated API rather than touching disk or Supabase directly.
 
 **Endpoints:**
 ```
 POST /tools/write-artifact   { slug, roles, files: {path: content} }  → creates or overwrites an artifact (writes manifest.json + every file)
 GET  /tools/read-artifact?slug=...                                    → { slug, roles, files } or 404
+GET  /tools/list-artifacts                                            → catalog of all artifacts on disk
+GET  /tools/get-schema                                                → { tables: [{ table, columns: [{name, type, nullable}] }] }
 GET  /health
 ```
 
 **Structure:**
 - `app/services/artifact_writer.py` — `ArtifactWriterService`: validates `slug`/file paths against path traversal (rejects `..`, confines every resolved path to `ARTIFACTS_ROOT`), requires `index.html` among the written files, writes `manifest.json` from `roles`
-- `app/routers/tools.py` — FastAPI router, maps `InvalidArtifactError` → 400, missing artifact → 404
-- `app/config.py` — `PORT` (default `5001`), `ARTIFACTS_ROOT` (default `../artifacts-server/artifacts`, i.e. the same folder `artifacts-server` serves from)
+- `app/services/artifact_catalog.py` — walks the artifacts tree for `list-artifacts`
+- `app/services/schema_service.py` — `SchemaService`: calls Supabase's `GET /rest/v1/` with `Accept: application/openapi+json` **using the secret key** (the anon key is rejected by this specific endpoint), parses table/column definitions out of the returned OpenAPI document
+- `app/routers/tools.py` — FastAPI router, maps `InvalidArtifactError` → 400, missing artifact → 404, schema errors → 503/whatever status Supabase returned
+- `app/config.py` — `PORT` (default `5001`), `ARTIFACTS_ROOT` (default `../artifacts-server/artifacts`, i.e. the same folder `artifacts-server` serves from), `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (loaded from `.env` via `python-dotenv`)
 
 Registered as a plain Nx `project.json` (not a package.json-based JS project) with `install` / `serve` / `start` targets running `pip install` / `uvicorn` directly — Nx auto-discovers any `project.json` in the repo regardless of language.
 
+**Why the secret key is safe here:** `get-schema` is only ever called by `agent-service` at artifact-*generation* time, server-side, to look up real table/column names before writing code — it is never in the path of a running artifact's data requests (those go through `supabase-service`, anon-key-only, RLS-scoped). No artifact, and no browser code, ever sees this key or this endpoint.
+
 ---
 
-## 5. `services/agent-service` (port 5002, Python/FastAPI)
+## 6. `services/agent-service` (port 5002, Python/FastAPI)
 
-Takes a natural-language chat prompt, asks an LLM to produce a complete artifact (or an updated version of one), and calls `tool-service` to persist it.
+Takes a natural-language chat prompt, asks an LLM to produce a complete artifact (or an updated version of one), and calls `tool-service` to persist it. The LLM has a real tool — `get_schema` — that it can call mid-generation to look up the actual Supabase schema before writing persistence code, so generated artifacts reference real table/column names instead of guessing.
 
 **Endpoints:**
 ```
@@ -130,12 +172,18 @@ GET  /health
 ```
 
 **Multi-provider LLM abstraction** (`app/services/providers/`):
-- `base.py` — `ArtifactLLMClient` ABC (`generate(messages, context_files) -> ArtifactSpec`), the shared JSON schema every provider is constrained to (`reply`, `slug`, `title`, `index_html`, `css`, `js`), and `build_system_prompt()`, which — when updating — folds the artifact's *current* files into the prompt so the model returns a complete, coherent replacement rather than a diff
-- `claude_provider.py` — Anthropic Messages API, structured output via `output_config.format` (`json_schema`), adaptive thinking, streamed to avoid timeouts
-- `gemini_provider.py` — `google-genai`, `response_schema=ArtifactSpec` (the same Pydantic model), `response.parsed` gives a typed result directly
-- `factory.py` — `get_llm_client(provider, model_override, settings)` picks the implementation; `list_providers()` backs `GET /agent/providers`
+- `base.py` — `ArtifactLLMClient` ABC (`generate(messages, context_files) -> ArtifactSpec`), the shared JSON schema every provider is constrained to (`reply`, `slug`, `title`, `index_html`, `css`, `js`), `build_system_prompt()` (folds an artifact's *current* files into the prompt when updating, so the model returns a complete, coherent replacement rather than a diff), the `get_schema` tool description, and `format_schema_for_tool_result()`
+- `claude_provider.py` — Anthropic Messages API. Runs a bounded tool-calling loop first (plain `messages.create` with `tools=[get_schema]`, up to 3 iterations, executing `tool_client.get_schema()` on request) and folds any tool calls/results into the conversation; the final answer is then a separate `messages.stream` call with `output_config.format` (`json_schema`) and adaptive thinking
+- `gemini_provider.py` — `google-genai`. Same two-phase shape: a tool-enabled `generate_content` loop using `types.FunctionDeclaration`/`function_call` parts, then a final call with `response_schema=ArtifactSpec` giving a typed `.parsed` result
+- `factory.py` — `get_llm_client(provider, model_override, settings, tool_client)` picks the implementation, threading through the shared `ToolServiceClient`; `list_providers()` backs `GET /agent/providers`
+- `app/services/tool_client.py` — `ToolServiceClient`: HTTP client for all of `tool-service`'s endpoints, including `get_schema()`
 
-Provider/model selection: `LLM_PROVIDER` env var (default `claude`) is the default; each request can override via `provider`/`model`. Per-provider model defaults also come from env: `ANTHROPIC_MODEL` (default `claude-opus-4-8`), `GEMINI_MODEL` (default `gemini-2.5-flash`), plus `GEMINI_API_KEY` (Claude's key resolves however the Anthropic SDK normally resolves it — env var, auth token, or CLI profile).
+Provider/model selection: `LLM_PROVIDER` env var (default `gemini`) is the default; each request can override via `provider`/`model`. Per-provider model defaults also come from env: `ANTHROPIC_MODEL` (default `claude-opus-4-8`), `GEMINI_MODEL` (default `gemini-2.5-flash`), plus `GEMINI_API_KEY` (Claude's key resolves however the Anthropic SDK normally resolves it — env var, auth token, or CLI profile). **This service holds no Supabase credentials of its own** — schema lookups are delegated entirely to `tool-service`.
+
+**System prompt contract** (`BASE_SYSTEM_PROMPT`) mandates, in order:
+1. The three-file artifact shape (`index.html`, `assets/style.css`, `assets/app.js`), no `<form>`/`type="submit"` (sandboxed without `allow-forms`), no external libraries or CDNs.
+2. **Tailwind CSS** via the shared vendored asset — link `../_shared/tailwind.min.css` before `assets/style.css` and build the UI primarily with utility classes.
+3. **postMessage bridge only** for persisted data — the exact wire protocol implemented by `useArtifactDataBridge.ts` (below), including the precise response shapes per HTTP method (list responses are wrapped as `{ data: [...] }`; create/update responses are the bare row; delete resolves to `null`), which query keys are reserved (`order`, `limit`) vs. plain filters, and an explicit instruction to omit unused arguments rather than pass `null` — the artifact must **never** call Supabase or the parent's `/api/data/*` directly.
 
 **Chat/update flow** (`app/services/chat_service.py`): if the request carries a `slug`, it first calls `tool-service`'s `read-artifact` to fetch the artifact's current files as context; the LLM returns a full replacement; `tool-service`'s `write-artifact` overwrites it (create and update are the same write call — there's no separate "patch" endpoint). The response includes the full updated message history so the Next.js chat page can just replace its local state with it.
 
@@ -143,31 +191,38 @@ Both the single-shot and chat flows share a small `artifact_persistence.py` help
 
 ---
 
-## 6. `apps/artifacts-viewer` (port 4200)
+## 7. `apps/artifacts-viewer` (port 4200)
 
-A Next.js (App Router) app that lets a user pick a role and an artifact, fetches a token, and renders the artifact in an isolated iframe.
+A Next.js (App Router) app that lets a user pick a role and an artifact, fetches a token, renders the artifact in an isolated iframe, and mediates all of that artifact's data access over `postMessage` — the artifact itself never receives a Supabase token or calls any backend directly.
 
-**Request flow:**
+**Artifact rendering flow:**
 1. Browser calls this app's own `GET /api/token?role=...` (same-origin, no CORS needed).
 2. That Route Handler calls `backend-server`'s `/auth/dev-token` **server-side** (a BFF pattern — the browser never talks to `backend-server` directly, and `BACKEND_SERVICE_URL` never reaches the client bundle).
 3. The token comes back to the browser, which builds `http://localhost:3000/<artifact-path>/?token=<jwt>` and sets it as the iframe `src` (a query param, not a header, because a plain iframe navigation can't attach `Authorization`).
 4. `artifacts-server` validates the token and manifest exactly as described above and returns the artifact — or a JSON error, which just renders as text inside the frame.
 
-**Modules:**
-- `lib/config/env.ts` — `getBackendServiceUrl()` (server-only default `http://localhost:3334`), `getArtifactsServerUrl()` (public, default `http://localhost:3000`)
-- `lib/api/backend-service-client.ts` — server-only (`import 'server-only'`) client for `backend-server`
-- `app/api/token/route.ts` — the Route Handler bridging browser ↔ `backend-server`
-- `lib/api/token-client.ts` — client-side fetch against this app's own `/api/token`
-- `lib/artifacts/artifact-url.ts` — builds the token-bearing iframe URL
-- `lib/artifacts/available-artifacts.ts` — static registry of known artifacts (`/dashboard/`, `/admin/users/`)
-- `hooks/useArtifactToken.ts` — refetches the token whenever the selected role changes
-- `components/RoleSwitcher.tsx`, `ArtifactSelector.tsx`, `ArtifactFrame.tsx`, `ArtifactViewer.tsx` — the UI, composed in `app/page.tsx`
+**Persisted-data flow (the `postMessage` bridge):**
+1. The user logs into Supabase through this app's own UI (`SupabaseSessionWidget.tsx`), which posts to `POST /api/supabase/login` (or `/signup`) — a BFF route that calls `supabase-service`'s `/auth/login`. The resulting `{ accessToken, userId, email }` is held in React state (`supabase-session-context.tsx`), never in `localStorage`/cookies.
+2. The artifact's JS posts `{ source: 'artifact-data-bridge', type: 'request', requestId, table, method, id, body, search }` to `window.parent` — it holds no credentials and cannot reach any backend on its own (sandboxed, no `allow-same-origin`, and `connect-src 'none'` blocks any outbound call it might attempt anyway).
+3. `useArtifactDataBridge.ts` validates the sender via `event.source === iframe.contentWindow` (**not** `event.origin`, since a sandboxed iframe's origin is the opaque string `"null"`), then makes the real request itself — `fetch('/api/data/<table>[/<id>][?search]', { headers: { Authorization: Bearer <supabase token>, X-User-Id } })` — using the logged-in user's own session.
+4. `app/api/data/[table]/route.ts` and `[id]/route.ts` are a thin BFF proxy to `supabase-service`'s `/data/:table` endpoints (no CORS — deliberately, as defense-in-depth against any artifact that somehow tried to call them directly).
+5. The result is posted back to the iframe as `{ source: 'artifact-data-bridge', type: 'response', requestId, status, body }`.
 
-**Iframe sandboxing** (`ArtifactFrame.tsx`) — artifacts are treated as untrusted content:
+**Modules:**
+- `lib/config/env.ts` — `getBackendServiceUrl()`, `getArtifactsServerUrl()`, `getAgentServiceUrl()`, `getSupabaseServiceUrl()` (all server-only defaults except the artifacts server URL, which the browser also needs to build the iframe `src`)
+- `lib/api/backend-service-client.ts`, `lib/api/supabase-service-client.ts`, `lib/api/agent-service-client.ts`, `lib/api/artifacts-catalog-client.ts` — server-only (`import 'server-only'`) clients for each backend
+- `app/api/token/route.ts`, `app/api/supabase/{login,signup}/route.ts`, `app/api/data/[table]/{route.ts,[id]/route.ts}`, `app/api/artifacts/route.ts`, `app/api/chat/{route.ts,providers/route.ts}` — the BFF routes bridging browser ↔ each backend
+- `lib/supabase/supabase-session-context.tsx` — React context holding the Supabase session, plus `login`/`signUp`/`logout`
+- `hooks/useArtifactDataBridge.ts` — the postMessage mediator described above
+- `hooks/useArtifactToken.ts`, `hooks/useArtifactSrc.ts` — token fetching and iframe `src` construction
+- `components/RoleSwitcher.tsx`, `ArtifactSelector.tsx`, `ArtifactFrame.tsx`, `ArtifactViewer.tsx`, `supabase/SupabaseSessionWidget.tsx` — the UI, composed in `app/page.tsx`
+
+**Iframe sandboxing** (`ArtifactFrame.tsx`) — artifacts are treated as untrusted, potentially AI-generated (and thus potentially adversarial) content:
 - `sandbox="allow-scripts"` **only** — no `allow-same-origin` (the framed document gets a unique opaque origin, so it can't read this app's — or even its own origin's — cookies/storage), no forms, popups, top-navigation, downloads, or modals.
 - No `allow` (Permissions Policy) features are delegated.
 - `referrerPolicy="no-referrer"` — this app's URL is never sent to the artifacts server as a `Referer` header.
 - The iframe is keyed by `src`, so switching role or artifact fully remounts it rather than reusing stale state.
+- `artifacts-server` additionally sends `Content-Security-Policy: connect-src 'none'` on every artifact document, so even outbound network calls the sandbox attribute itself doesn't restrict are blocked at the browser level.
 
 ### AI chat page (`/chat`)
 
@@ -175,27 +230,34 @@ Lets a user create or update an artifact by chatting instead of hand-writing HTM
 
 - `app/chat/page.tsx` → `components/chat/ChatPage.tsx` — owns the conversation state (`messages`, the target `slug`, selected `provider`, preview `role`)
 - `components/chat/ChatMessageList.tsx`, `ChatComposer.tsx`, `ProviderSelector.tsx` — presentational pieces
-- `lib/api/agent-service-client.ts` — server-only client for `agent-service` (mirrors `backend-service-client.ts`)
-- `app/api/chat/route.ts`, `app/api/chat/providers/route.ts` — the BFF proxy (same reasoning as `/api/token`: the browser never talks to `agent-service` directly, and `AGENT_SERVICE_URL` stays server-only)
-- `lib/api/chat-client.ts` — client-side fetch against those two routes
 - `lib/chat/types.ts` — the wire types shared between the proxy and the UI
 
 Flow: composer submits → optimistic user message appended → `POST /api/chat` with the full message list, the current `slug` (`null` on the first turn), and the selected provider → `agent-service` returns the assistant's reply plus the artifact's `url_path` → the page adopts the returned `slug`/`url_path` so the *next* message updates the same artifact instead of creating a new one, and the preview pane's iframe reloads against it.
 
 ---
 
+## Security model summary
+
+| Concern | Mechanism |
+|---|---|
+| Artifact can't read parent cookies/storage/DOM | `sandbox="allow-scripts"` with no `allow-same-origin` → opaque origin |
+| Artifact can't submit forms / navigate top / open popups | No `allow-forms`/`allow-top-navigation`/`allow-popups` on the sandbox attribute |
+| Artifact can't make its own network calls (external or internal) | `Content-Security-Policy: connect-src 'none'` on every artifact HTML response |
+| Artifact can't hold or leak a real Supabase/database credential | It never receives one — all data access goes through `postMessage` → `useArtifactDataBridge.ts`, which holds the session and makes the request itself |
+| A forged/spoofed `postMessage` sender | Validated via `event.source === iframe.contentWindow`, not `event.origin` (which is `"null"` for a sandboxed frame either way) |
+| Row-level authorization on actual data | Postgres RLS policies (`auth.uid() = user_id`, etc.) — enforced by Supabase itself against the user's own JWT, not application code |
+| Runtime Supabase access is over-privileged | `supabase-service` uses **only** the anon key, always scoped to the calling user's JWT (`global.headers.Authorization`) |
+| Schema introspection needs a secret key Supabase requires for that endpoint | Isolated to `tool-service`'s `get-schema` tool — generation-time only, never in any runtime artifact/data request path |
+| AI-generated code doesn't know the real schema | The `get_schema` tool (Claude/Gemini tool-calling loop) fetches real table/column names before code is written |
+
+`services/artifacts-server/artifacts/sandbox-security-test/` is a live artifact that exercises every row in this table (except the RLS/schema ones, which aren't reachable from an artifact by design) and reports pass/fail for each — open it any time to re-verify the sandbox after changing anything here.
+
+---
+
 ## Running everything locally
 
-```sh
-npx nx serve backend-server       # http://localhost:3334
-npx nx serve artifacts-server     # http://localhost:3000
-npx nx run tool-service:serve     # http://localhost:5001 (needs `pip install -r services/tool-service/requirements.txt` first)
-npx nx run agent-service:serve    # http://localhost:5002 (needs `pip install -r services/agent-service/requirements.txt`, and ANTHROPIC_API_KEY / GEMINI_API_KEY set to actually generate anything)
-npx nx run artifacts-viewer:dev   # http://localhost:4200
-```
-
-Then open `http://localhost:4200` to browse existing artifacts by role, or `http://localhost:4200/chat` to create/update one via chat.
+See the top-level [README.md](./README.md) for step-by-step setup and run instructions, including which `.env` files need which keys.
 
 ## Status
 
-Everything above is implemented, builds, typechecks, lints, and has been verified end-to-end (token issuance → role-based 200/403/404 responses → sandboxed rendering; tool-service write/read round-trip against the real artifacts folder; the full agent-service → tool-service → artifacts-server chain, confirmed by writing and immediately serving an artifact; the chat page's proxy chain, confirmed against agent-service without live LLM credentials in this environment). Not yet built/verified: a real identity provider (the token endpoint is explicitly a *dev* stand-in), an artifact publishing/upload flow beyond the agent, e2e test suites (removed from this workspace for now), and an actual live Claude/Gemini generation — that requires `ANTHROPIC_API_KEY`/`GEMINI_API_KEY`, neither of which is set in this environment, so only the failure paths were exercised.
+Everything above is implemented, builds, typechecks, and lints. Verified end-to-end live against a real Supabase project: token issuance → role-based 200/403/404 responses → sandboxed rendering; tool-service write/read round-trip; the full agent-service → tool-service → artifacts-server chain; the postMessage data bridge performing real CRUD against Supabase through RLS; `get-schema` returning the real `todos` table schema via the secret key held only in `tool-service`; the CSP blocking external/internal fetches from inside the sandboxed iframe. Not yet built: a real identity provider (the token endpoint is explicitly a *dev* stand-in), an artifact publishing/upload flow beyond the agent, and e2e test suites (removed from this workspace for now).

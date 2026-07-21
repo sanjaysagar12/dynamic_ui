@@ -1,107 +1,149 @@
-# New Nx Repository
+# Dynamic UI — Artifacts Platform
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+An Nx monorepo implementing an **Artifacts platform**: role-gated, sandboxed HTML/CSS/JS "artifacts" that can be hand-written or generated/updated by an AI agent (Claude or Gemini) through a chat UI, with a security model that assumes artifact code may be adversarial (sandboxed iframe, CSP, `postMessage`-only data access, anon-key-only Supabase access with Row-Level Security as the real authorization boundary).
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is ready ✨.
+See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for the full design write-up. This README covers getting it running.
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/docs/technologies/typescript/introduction?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
-🚀 If you haven't connected to Nx Cloud yet, [complete your setup here](https://cloud.nx.app/get-started). Get faster builds with remote caching, distributed task execution, and self-healing CI. [See how your workspace can benefit](#nx-cloud).
-## Generate a library
+## Services at a glance
 
-```sh
-npx nx g @nx/js:lib packages/pkg1 --publishable --importPath=@my-org/pkg1
-```
+| Service | Port | Stack | Purpose |
+|---|---|---|---|
+| `backend-server` | 3334 | Express | Issues development JWTs |
+| `artifacts-server` | 3000 | Express | Serves artifacts (static files, role-gated) |
+| `supabase-service` | 3335 | Express | Anon-key-only middle layer to Supabase |
+| `tool-service` | 5001 | FastAPI | Writes/reads artifact files; holds the Supabase secret key for schema lookups |
+| `agent-service` | 5002 | FastAPI | Generates/updates artifacts via Claude/Gemini |
+| `artifacts-viewer` | 4200 | Next.js | The app you open in a browser |
 
-## Run tasks
+## Prerequisites
 
-To build the library use:
+- Node.js 20+ and a package manager (this repo uses `npm`)
+- Python 3.11+ with `pip`
+- A Supabase project (free tier is fine) if you want the data-backed artifacts (todo, etc.) to actually work — purely-local-state artifacts work without it
 
-```sh
-npx nx run pkg1:build
-```
-
-To run any task with Nx use:
-
-```sh
-npx nx run <project-name>:<target>
-```
-
-These targets are either [inferred automatically](https://nx.dev/docs/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
-
-[More about running tasks in the docs &raquo;](https://nx.dev/docs/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Versioning and releasing
-
-To version and release the library use
-
-```
-npx nx release
-```
-
-Pass `--dry-run` to see what would happen without actually releasing the library.
-
-[Learn more about Nx release &raquo;](https://nx.dev/docs/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Keep TypeScript project references up to date
-
-Nx automatically updates TypeScript [project references](https://www.typescriptlang.org/docs/handbook/project-references.html) in `tsconfig.json` files to ensure they remain accurate based on your project dependencies (`import` or `require` statements). This sync is automatically done when running tasks such as `build` or `typecheck`, which require updated references to function correctly.
-
-To manually trigger the process to sync the project graph dependencies information to the TypeScript project references, run the following command:
+## First-time setup
 
 ```sh
-npx nx sync
+npm install
 ```
 
-You can enforce that the TypeScript project references are always in the correct state when running in CI by adding a step to your CI job configuration that runs the following command:
+Then, for each Python service, install its dependencies:
 
 ```sh
-npx nx sync:check
+npx nx run tool-service:install
+npx nx run agent-service:install
 ```
 
-[Learn more about nx sync](https://nx.dev/reference/nx-commands#sync)
+### Environment variables
 
-## Nx Cloud
+Each service reads its own `.env` file (already `.gitignore`d — never commit real keys). Create these if they don't already exist:
 
-Nx Cloud ensures a [fast and scalable CI](https://nx.dev/nx-cloud?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) pipeline. It includes features such as:
+**`services/backend-server/.env`** *(optional — has working defaults)*
+```
+JWT_SECRET=dev-insecure-shared-secret
+JWT_ISSUER=backend-server
+PORT=3334
+```
 
-- [Remote caching](https://nx.dev/docs/features/ci-features/remote-cache?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task distribution across multiple machines](https://nx.dev/docs/features/ci-features/distribute-task-execution?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Automated e2e test splitting](https://nx.dev/docs/features/ci-features/split-e2e-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task flakiness detection and rerunning](https://nx.dev/docs/features/ci-features/flaky-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+**`services/artifacts-server/.env`** *(optional — has working defaults)*
+```
+JWT_SECRET=dev-insecure-shared-secret   # must match backend-server's
+JWT_ISSUER=backend-server               # must match backend-server's
+PORT=3000
+```
+> `JWT_SECRET`/`JWT_ISSUER` must be identical between `backend-server` (issues tokens) and `artifacts-server` (verifies them). If you don't set them, both fall back to the same hardcoded dev defaults, so this "just works" without any `.env` files at all — only set these if you want your own secret.
 
-### Set up CI (non-Github Actions CI)
+**`services/supabase-service/.env`** *(required for any data-backed artifact)*
+```
+SUPABASE_URL=https://<your-project>.supabase.co
+SUPABASE_ANON_KEY=<your anon/publishable key>
+PORT=3335
+```
+Get these from your Supabase project's **Settings → API**. This service never needs — and must never be given — a secret/service-role key.
 
-**Note:** This is only required if your CI provider is not GitHub Actions.
+**`services/tool-service/.env`** *(required only for the AI agent's schema-lookup tool)*
+```
+SUPABASE_URL=https://<your-project>.supabase.co
+SUPABASE_SECRET_KEY=<your secret/service-role key>
+```
+This is the **only** place in the whole system that should ever hold a Supabase secret key. It's used solely by the `get-schema` tool at artifact-generation time — never for any runtime data request.
 
-Use the following command to configure a CI workflow for your workspace:
+**`services/agent-service/.env`** *(required to use the AI chat page)*
+```
+LLM_PROVIDER=gemini
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_API_KEY=<your Gemini API key>
+ANTHROPIC_MODEL=claude-opus-4-8
+TOOL_SERVICE_URL=http://localhost:5001
+ARTIFACTS_SERVER_URL=http://localhost:3000
+PORT=5002
+```
+Set `LLM_PROVIDER=claude` to default to Claude instead (needs `ANTHROPIC_API_KEY` resolved however the Anthropic SDK normally finds it — env var, auth token, or CLI profile). You can also pick the provider per-request from the chat page's model picker regardless of the default.
+
+## Running the services
+
+Each runs independently — open a terminal per service (or background them), in roughly this order:
 
 ```sh
-npx nx g ci-workflow
+# 1. Identity
+npx nx serve backend-server              # http://localhost:3334
+
+# 2. Data layer (skip if you don't have a Supabase project yet)
+npx nx run supabase-service:serve        # http://localhost:3335
+
+# 3. Artifact storage + serving
+npx nx run tool-service:serve            # http://localhost:5001
+npx nx run artifacts-server:serve        # http://localhost:3000
+
+# 4. AI agent (skip if you just want to browse hand-written artifacts)
+npx nx run agent-service:serve           # http://localhost:5002
+
+# 5. The app itself
+npx nx run artifacts-viewer:dev          # http://localhost:4200
 ```
 
-[Learn more about Nx on CI](https://nx.dev/docs/features/ci-features?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+Then open **http://localhost:4200**:
+- Pick a role (admin/manager) and browse the existing artifacts.
+- To use data-backed artifacts (e.g. the todo app), log in with the Supabase widget in the header first (sign up with any email/password — it creates a real Supabase Auth user).
+- Open **http://localhost:4200/chat** to create or update an artifact by chatting with the agent.
 
-## Install Nx Console
+None of the services auto-restart on file changes except `artifacts-viewer` (Next.js dev server) and `agent-service`/`tool-service` (uvicorn `--reload`). If you edit a `backend-server`/`artifacts-server`/`supabase-service` source file, stop and re-run its `serve` command to pick up the change.
 
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
+### Quick smoke test without the browser
 
-[Install Nx Console &raquo;](https://nx.dev/docs/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+```sh
+curl "http://localhost:3334/auth/dev-token?role=admin"
+# → { "token": "...", "role": "admin", "tokenType": "Bearer" }
 
-## 🔗 Learn More
+curl -H "Authorization: Bearer <token>" "http://localhost:3000/api/artifacts"
+# → { "artifacts": [...] }
+```
 
-- [Nx Documentation](https://nx.dev/docs)
-- [Crafting Your Workspace Tutorial](https://nx.dev/docs/getting-started/tutorials/crafting-your-workspace)
-- [Module Boundaries](https://nx.dev/docs/features/enforce-module-boundaries)
-- [Releasing Packages](https://nx.dev/docs/features/manage-releases)
-- [Nx Plugins](https://nx.dev/docs/concepts/nx-plugins)
-- [Nx Cloud](https://nx.dev/nx-cloud)
+## Project layout
 
-## 💬 Community
+```
+apps/artifacts-viewer/          Next.js app — the UI
+services/artifacts-server/      Static artifact server (+ services/artifacts-server/artifacts/ holds the actual artifact files)
+services/backend-server/        Dev JWT issuer
+services/supabase-service/      Anon-key-only Supabase middle layer
+services/tool-service/          Artifact file I/O + schema introspection (Python)
+services/agent-service/         AI agent (Python)
+packages/shared-auth/           Shared Role types + JWT signing/verification
+```
 
-Join the Nx community:
+Full details, request flows, and the security model: **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
 
-- [Discord](https://go.nx.dev/community)
-- [X (Twitter)](https://twitter.com/nxdevtools)
-- [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [YouTube](https://www.youtube.com/@nxdevtools)
-- [Blog](https://nx.dev/blog)
+---
+
+## Nx workspace basics
+
+This repo is managed with [Nx](https://nx.dev). A few commands that come up often:
+
+```sh
+npx nx run <project>:<target>       # run any task for any project
+npx nx run-many -t build,lint -p <project>   # run several targets for one project
+npx nx graph                        # visually explore the project graph
+npx nx sync                         # keep TypeScript project references up to date (auto-runs on build/typecheck)
+```
+
+[Nx documentation](https://nx.dev/docs) · [Nx Console (editor extension)](https://nx.dev/docs/getting-started/editor-setup)

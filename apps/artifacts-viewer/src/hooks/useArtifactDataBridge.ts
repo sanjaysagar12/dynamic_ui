@@ -78,14 +78,19 @@ export function useArtifactDataBridge(iframeRef: RefObject<HTMLIFrameElement | n
 
       try {
         const path = `/api/data/${encodeURIComponent(table)}${id ? `/${encodeURIComponent(id)}` : ''}${search ? `?${search}` : ''}`;
+        // Treat null the same as omitted: generated artifacts sometimes pass
+        // `null` explicitly for an unused body/id instead of leaving it out,
+        // and a GET/DELETE with any body — even "null" — is rejected by the
+        // browser before the request is even sent.
+        const hasBody = body !== undefined && body !== null;
         const response = await fetch(path, {
           method,
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
             'X-User-Id': session.userId,
-            ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+            ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
           },
-          body: body !== undefined ? JSON.stringify(body) : undefined,
+          body: hasBody ? JSON.stringify(body) : undefined,
         });
         const text = await response.text();
         target.postMessage(

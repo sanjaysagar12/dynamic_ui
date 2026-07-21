@@ -26,7 +26,9 @@ export class ArtifactCatalogService {
       const manifest = parseManifest(JSON.parse(raw));
       const slug = relative(this.artifactsRoot, dir).split(sep).join('/');
 
-      if (!slug) {
+      // Folders like `_shared` hold vendored assets (e.g. Tailwind CSS) served
+      // through the same manifest-gated pipeline, but aren't browsable artifacts.
+      if (!slug || slug.split('/').some((segment) => segment.startsWith('_'))) {
         return [];
       }
 

@@ -18,13 +18,29 @@ function assertValidTableName(table: string): void {
 export class RecordsService {
   constructor(private readonly clientFactory: SupabaseClientFactory) {}
 
-  async list(accessToken: string, table: string, filters: Record<string, string>): Promise<unknown[]> {
+  async list(accessToken: string, table: string, params: Record<string, string>): Promise<unknown[]> {
     assertValidTableName(table);
     const client = this.clientFactory.createUserScopedClient(accessToken);
+
+    // "order" and "limit" are query modifiers (PostgREST convention), not
+    // column filters — every other key is treated as an `column = value` filter.
+    const { order, limit, ...filters } = params;
 
     let query = client.from(table).select('*');
     for (const [column, value] of Object.entries(filters)) {
       query = query.eq(column, value);
+    }
+
+    if (order) {
+      const [column, direction] = order.split('.');
+      query = query.order(column, { ascending: direction !== 'desc' });
+    }
+
+    if (limit) {
+      const parsedLimit = Number(limit);
+      if (Number.isFinite(parsedLimit)) {
+        query = query.limit(parsedLimit);
+      }
     }
 
     const { data, error } = await query;

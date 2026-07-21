@@ -13,7 +13,7 @@ export class JwtAuthenticationProvider implements AuthenticationProvider {
     }
 
     const payload = this.jwtService.verify(token);
-    return { subject: payload.sub, role: payload.role };
+    return { subject: payload.sub, role: payload.role, token };
   }
 
   private extractToken(req: Request): string | null {

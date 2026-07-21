@@ -2,6 +2,7 @@ import { isRole, type Role } from '@org/shared-auth';
 
 export interface ArtifactManifest {
   roles: Role[];
+  title?: string;
 }
 
 export function parseManifest(raw: unknown): ArtifactManifest {
@@ -15,5 +16,10 @@ export function parseManifest(raw: unknown): ArtifactManifest {
     throw new Error('Invalid manifest.json: "roles" must be an array of valid roles');
   }
 
-  return { roles: (raw as { roles: Role[] }).roles };
+  const title = (raw as { title?: unknown }).title;
+
+  return {
+    roles: (raw as { roles: Role[] }).roles,
+    ...(typeof title === 'string' && title.length > 0 ? { title } : {}),
+  };
 }

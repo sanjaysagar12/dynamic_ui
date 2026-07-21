@@ -1,20 +1,25 @@
 'use client';
 
-import { AVAILABLE_ARTIFACTS } from '../lib/artifacts/available-artifacts';
+import type { ArtifactCatalogEntry } from '../lib/artifacts/types';
 
 export interface ArtifactSelectorProps {
+  artifacts: ArtifactCatalogEntry[];
   artifactPath: string;
   onChange: (path: string) => void;
 }
 
-export function ArtifactSelector({ artifactPath, onChange }: ArtifactSelectorProps) {
+export function ArtifactSelector({ artifacts, artifactPath, onChange }: ArtifactSelectorProps) {
+  if (artifacts.length === 0) {
+    return <span style={{ color: '#888' }}>No artifacts available for this role.</span>;
+  }
+
   return (
     <label>
       Artifact:{' '}
       <select value={artifactPath} onChange={(e) => onChange(e.target.value)}>
-        {AVAILABLE_ARTIFACTS.map((artifact) => (
-          <option key={artifact.path} value={artifact.path}>
-            {artifact.label}
+        {artifacts.map((artifact) => (
+          <option key={artifact.slug} value={`/${artifact.slug}/`}>
+            {artifact.title}
           </option>
         ))}
       </select>

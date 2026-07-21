@@ -53,3 +53,8 @@ test-output
 # Next.js
 .next
 out
+
+# Secrets
+.env
+.env.local
+.env.*.local

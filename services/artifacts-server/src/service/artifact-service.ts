@@ -6,6 +6,11 @@ import type { AuthenticationProvider } from '../auth/authentication-provider.js'
 import type { AuthorizationStrategy } from '../authorization/authorization-strategy.js';
 import { ArtifactForbiddenError, AuthenticationRequiredError } from '../core/errors.js';
 
+export interface ArtifactServingResult extends ResolvedArtifactRequest {
+  /** The token that authorized this request, present whenever content is actually served. */
+  token?: string;
+}
+
 export class ArtifactService {
   constructor(
     private readonly pathResolver: ArtifactPathResolver,
@@ -14,7 +19,7 @@ export class ArtifactService {
     private readonly authorizationStrategy: AuthorizationStrategy,
   ) {}
 
-  async handleRequest(req: Request, requestPath: string): Promise<ResolvedArtifactRequest> {
+  async handleRequest(req: Request, requestPath: string): Promise<ArtifactServingResult> {
     const resolved = await this.pathResolver.resolve(requestPath);
 
     if (resolved.requiresTrailingSlashRedirect) {
@@ -41,6 +46,6 @@ export class ArtifactService {
       throw new ArtifactForbiddenError();
     }
 
-    return resolved;
+    return { ...resolved, token: authContext.token };
   }
 }

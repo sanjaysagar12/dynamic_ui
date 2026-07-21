@@ -7,7 +7,9 @@ import { ManifestRepository } from './manifest/manifest-repository.js';
 import { JwtAuthenticationProvider } from './auth/jwt-authentication-provider.js';
 import { RoleAuthorizationStrategy } from './authorization/role-authorization-strategy.js';
 import { ArtifactService } from './service/artifact-service.js';
+import { ArtifactCatalogService } from './service/artifact-catalog.service.js';
 import { createArtifactsRouter } from './http/artifacts.router.js';
+import { createArtifactsCatalogRouter } from './http/artifacts-catalog.router.js';
 
 export function createApp(config: AppConfig): Express {
   const app = express();
@@ -24,11 +26,13 @@ export function createApp(config: AppConfig): Express {
     authenticationProvider,
     authorizationStrategy,
   );
+  const catalogService = new ArtifactCatalogService(config.artifactsRoot);
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
 
+  app.use(createArtifactsCatalogRouter(catalogService, authenticationProvider));
   app.use(createArtifactsRouter(artifactService));
 
   return app;

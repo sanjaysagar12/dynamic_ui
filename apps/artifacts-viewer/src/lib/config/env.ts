@@ -7,3 +7,8 @@ export function getBackendServiceUrl(): string {
 export function getArtifactsServerUrl(): string {
   return process.env.NEXT_PUBLIC_ARTIFACTS_SERVER_URL || 'http://localhost:3000';
 }
+
+/** Server-only: base URL of the Agent Service, which generates and updates artifacts via chat. */
+export function getAgentServiceUrl(): string {
+  return process.env.AGENT_SERVICE_URL || 'http://localhost:5002';
+}

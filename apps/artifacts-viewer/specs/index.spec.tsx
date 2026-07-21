@@ -4,9 +4,17 @@ import Page from '../src/app/page';
 
 describe('Page', () => {
   beforeEach(() => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ token: 'test-token' }),
+    global.fetch = jest.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url.includes('/api/artifacts')) {
+        return {
+          ok: true,
+          json: async () => ({ artifacts: [{ slug: 'dashboard', title: 'Dashboard', roles: ['admin', 'manager'] }] }),
+        };
+      }
+
+      return { ok: true, json: async () => ({ token: 'test-token' }) };
     }) as jest.Mock;
   });
 

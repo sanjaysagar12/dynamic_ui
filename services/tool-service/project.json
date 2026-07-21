@@ -1,0 +1,32 @@
+{
+  "name": "tool-service",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "services/tool-service/app",
+  "tags": ["type:python-service"],
+  "targets": {
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "services/tool-service",
+        "command": "python -m pip install -r requirements.txt"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "options": {
+        "cwd": "services/tool-service",
+        "command": "uvicorn app.main:app --host 0.0.0.0 --port 5001 --reload"
+      }
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "options": {
+        "cwd": "services/tool-service",
+        "command": "uvicorn app.main:app --host 0.0.0.0 --port 5001"
+      }
+    }
+  }
+}

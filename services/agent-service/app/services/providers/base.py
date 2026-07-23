@@ -94,19 +94,52 @@ function request(method, table, id, body, search) {
   - PATCH: resolves to the updated row itself — NOT wrapped.
   - DELETE: resolves to `null` (no body).
 - The parent authenticates, authorizes, and forwards the request to the real Supabase-backed data layer; the artifact never sees a token or connects to Supabase/any backend directly.
+- Some columns have a CHECK constraint restricting them to a fixed set of allowed values (get_schema reports these). Any UI control writing to such a column (a status field, a category picker, etc.) MUST only offer/send one of the allowed values — e.g. render it as a `<select>`/button group populated with exactly those values, never free-text. Writing an unlisted value fails at the database with a constraint-violation error, not a friendly validation message.
 """
 
 GET_SCHEMA_TOOL_NAME = "get_schema"
 GET_SCHEMA_TOOL_DESCRIPTION = (
     "Returns the real tables and columns available in the shared Supabase database (name, type, "
-    "nullability) that artifacts can read/write through the parent app's postMessage data bridge. "
-    "Call this BEFORE writing any code that persists or loads data, so you use the actual table and "
-    "column names instead of guessing. Skip it for artifacts that only need local, in-memory UI state."
+    "nullability), plus every constraint on each table — primary keys, foreign keys, unique "
+    "constraints, and CHECK constraints (e.g. a column restricted to a fixed set of allowed values) — "
+    "that artifacts can read/write through the parent app's postMessage data bridge. "
+    "Call this BEFORE writing any code that persists or loads data, so you use the actual table/column "
+    "names and only ever write values that satisfy each table's constraints, instead of guessing either. "
+    "Skip it for artifacts that only need local, in-memory UI state."
 )
 
 
 class ArtifactGenerationError(Exception):
     pass
+
+
+_LEAKED_THINKING_MARKERS = ("<think>", "</think>")
+
+
+def validate_artifact_spec(spec: ArtifactSpec) -> None:
+    """Guards against a model leaking raw chain-of-thought into the structured
+    output fields instead of actual code — seen in practice as a literal
+    "</think>" tag and prose like "Let me rewrite the js properly..." ending
+    up as the entire content of index_html/css/js. This can happen even when
+    the response is syntactically valid JSON and stop_reason is normal, so
+    json.loads()/model_validate() alone won't catch it — it has to be checked
+    after parsing, before the files are persisted.
+    """
+    fields = {"index_html": spec.index_html, "css": spec.css, "js": spec.js}
+
+    for field_name, content in fields.items():
+        lowered = content.lower()
+        if any(marker in lowered for marker in _LEAKED_THINKING_MARKERS):
+            raise ArtifactGenerationError(
+                f"Model output for '{field_name}' contains leaked reasoning text instead of code "
+                "(found a thinking-block marker) — try the request again."
+            )
+
+    if "<" not in spec.index_html:
+        raise ArtifactGenerationError(
+            "Model output for 'index_html' doesn't contain any HTML markup — "
+            "it looks like leaked reasoning text instead of a real document. Try the request again."
+        )
 
 
 def build_system_prompt(context_files: dict[str, str] | None) -> str:
@@ -136,4 +169,10 @@ def format_schema_for_tool_result(tables: list[dict]) -> str:
     for table in tables:
         columns = ", ".join(f"{col['name']} ({col['type']}{', nullable' if col['nullable'] else ''})" for col in table["columns"])
         lines.append(f"- {table['table']}: {columns}")
-    return "Available tables and columns:\n" + "\n".join(lines)
+        for constraint in table.get("constraints", []):
+            lines.append(f"    CONSTRAINT — {constraint}")
+    return (
+        "Available tables and columns (CONSTRAINT lines are PRIMARY KEY / FOREIGN KEY / UNIQUE / CHECK "
+        "constraints — any value you write for that table must satisfy every listed constraint):\n"
+        + "\n".join(lines)
+    )

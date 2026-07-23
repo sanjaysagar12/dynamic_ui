@@ -48,6 +48,10 @@ class ColumnSchema(BaseModel):
 class TableSchema(BaseModel):
     table: str
     columns: list[ColumnSchema]
+    constraints: list[str] = Field(
+        default_factory=list,
+        description="Raw constraint definitions on this table (PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK)",
+    )
 
 
 class GetSchemaResponse(BaseModel):

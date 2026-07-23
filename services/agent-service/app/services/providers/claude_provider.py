@@ -12,6 +12,7 @@ from app.services.providers.base import (
     ArtifactLLMClient,
     build_system_prompt,
     format_schema_for_tool_result,
+    validate_artifact_spec,
 )
 from app.services.tool_client import ToolServiceClient, ToolServiceError
 
@@ -39,7 +40,7 @@ class ClaudeArtifactGenerator(ArtifactLLMClient):
 
             with self._client.messages.stream(
                 model=self._model,
-                max_tokens=8000,
+                max_tokens=16000,
                 thinking={"type": "adaptive"},
                 system=system_prompt,
                 messages=running_messages,
@@ -55,15 +56,26 @@ class ClaudeArtifactGenerator(ArtifactLLMClient):
         if response.stop_reason == "refusal":
             raise ArtifactGenerationError("Claude declined to generate this artifact")
 
+        if response.stop_reason == "max_tokens":
+            # The JSON got cut off mid-string, which json.loads() below would
+            # otherwise report as a confusing "Unterminated string" error.
+            raise ArtifactGenerationError(
+                "Claude's response was cut off before finishing (hit the output token limit) — "
+                "try a simpler request or ask for less verbose markup."
+            )
+
         text_blocks = [block.text for block in response.content if block.type == "text"]
         if not text_blocks:
             raise ArtifactGenerationError(f"Claude returned no text output (stop_reason={response.stop_reason})")
 
         try:
             data = json.loads("".join(text_blocks))
-            return ArtifactSpec.model_validate(data)
+            spec = ArtifactSpec.model_validate(data)
         except (json.JSONDecodeError, ValueError) as exc:
             raise ArtifactGenerationError(f"Claude returned an invalid artifact spec: {exc}") from exc
+
+        validate_artifact_spec(spec)
+        return spec
 
     def _run_tool_loop(self, system_prompt: str, running_messages: list[dict]) -> list[dict]:
         for _ in range(_MAX_TOOL_ITERATIONS):

@@ -12,6 +12,7 @@ from app.services.providers.base import (
     ArtifactLLMClient,
     build_system_prompt,
     format_schema_for_tool_result,
+    validate_artifact_spec,
 )
 from app.services.tool_client import ToolServiceClient, ToolServiceError
 
@@ -50,22 +51,35 @@ class GeminiArtifactGenerator(ArtifactLLMClient):
                     system_instruction=system_prompt,
                     response_mime_type="application/json",
                     response_schema=ArtifactSpec,
+                    max_output_tokens=16000,
                 ),
             )
         except genai_errors.APIError as exc:
             raise ArtifactGenerationError(f"Gemini request failed: {exc}") from exc
 
+        finish_reason = response.candidates[0].finish_reason if response.candidates else None
+        if finish_reason == types.FinishReason.MAX_TOKENS:
+            # The JSON got cut off mid-string, which json.loads() below would
+            # otherwise report as a confusing parse error.
+            raise ArtifactGenerationError(
+                "Gemini's response was cut off before finishing (hit the output token limit) — "
+                "try a simpler request or ask for less verbose markup."
+            )
+
         if response.parsed is not None:
-            return response.parsed  # type: ignore[return-value]
+            spec = response.parsed  # type: ignore[assignment]
+        else:
+            if not response.text:
+                raise ArtifactGenerationError("Gemini returned no output")
 
-        if not response.text:
-            raise ArtifactGenerationError("Gemini returned no output")
+            try:
+                data = json.loads(response.text)
+                spec = ArtifactSpec.model_validate(data)
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise ArtifactGenerationError(f"Gemini returned an invalid artifact spec: {exc}") from exc
 
-        try:
-            data = json.loads(response.text)
-            return ArtifactSpec.model_validate(data)
-        except (json.JSONDecodeError, ValueError) as exc:
-            raise ArtifactGenerationError(f"Gemini returned an invalid artifact spec: {exc}") from exc
+        validate_artifact_spec(spec)
+        return spec
 
     def _run_tool_loop(self, system_prompt: str, contents: list["types.Content"]) -> list["types.Content"]:
         for _ in range(_MAX_TOOL_ITERATIONS):

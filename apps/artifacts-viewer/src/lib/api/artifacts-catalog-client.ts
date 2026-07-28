@@ -1,21 +1,31 @@
 import 'server-only';
 import { getArtifactsServerUrl } from '../config/env';
-import { requestDevToken } from './backend-service-client';
 import type { ArtifactCatalogEntry } from '../artifacts/types';
 
 export class ArtifactsCatalogError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
     super(message);
     this.name = 'ArtifactsCatalogError';
   }
 }
 
-/** Lists artifacts visible to the given role, as reported by the Artifacts Server. Server-side only. */
-export async function listArtifactsForRole(role: string): Promise<ArtifactCatalogEntry[]> {
-  const { token } = await requestDevToken(role);
+export interface ArtifactCatalogResult {
+  role: string;
+  artifacts: ArtifactCatalogEntry[];
+}
 
+/**
+ * Lists artifacts visible to the caller, as reported by the Artifacts Server.
+ * The caller's own Supabase access token is forwarded as-is — the Artifacts
+ * Server verifies it (via supabase-service) and resolves the role itself, so
+ * this layer never needs to know or choose a role. Server-side only.
+ */
+export async function listArtifacts(accessToken: string): Promise<ArtifactCatalogResult> {
   const response = await fetch(new URL('/api/artifacts', getArtifactsServerUrl()), {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
     cache: 'no-store',
   });
 
@@ -23,6 +33,5 @@ export async function listArtifactsForRole(role: string): Promise<ArtifactCatalo
     throw new ArtifactsCatalogError('Failed to list artifacts from artifacts server', response.status);
   }
 
-  const data = await response.json();
-  return data.artifacts;
+  return response.json();
 }

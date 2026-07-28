@@ -2,20 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import type { Role } from '@org/shared-auth';
-import { useArtifactToken } from '../hooks/useArtifactToken';
+import { useSupabaseSession } from '../lib/supabase/supabase-session-context';
 import { useArtifactCatalog } from '../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../hooks/useArtifactSrc';
-import { RoleSwitcher } from './RoleSwitcher';
 import { ArtifactSelector } from './ArtifactSelector';
 import { ArtifactFrame } from './ArtifactFrame';
 import { SupabaseSessionWidget } from './supabase/SupabaseSessionWidget';
+import { theme } from '../lib/ui/theme';
 
 export function ArtifactViewer() {
-  const [role, setRole] = useState<Role>('manager');
+  const { session } = useSupabaseSession();
+  const token = session?.accessToken ?? null;
   const [artifactPath, setArtifactPath] = useState('');
-  const { token, loading, error } = useArtifactToken(role);
-  const { artifacts, loading: catalogLoading, error: catalogError } = useArtifactCatalog(role);
+  const { artifacts, role, loading: catalogLoading, error: catalogError } = useArtifactCatalog(token);
   const artifactSrc = useArtifactSrc(artifactPath, token);
 
   useEffect(() => {
@@ -27,32 +26,62 @@ export function ArtifactViewer() {
   }, [artifacts, catalogLoading, artifactPath]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <header style={{ display: 'flex', gap: '2rem', alignItems: 'center', padding: '1rem', flexWrap: 'wrap' }}>
-        <RoleSwitcher role={role} onChange={setRole} />
-        <ArtifactSelector artifacts={artifacts} artifactPath={artifactPath} onChange={setArtifactPath} />
-        <span>
-          Current role: <strong>{role}</strong>
-        </span>
-        <SupabaseSessionWidget />
-        <Link href="/chat" style={{ marginLeft: 'auto' }}>
+    <div style={{ display: 'flex', height: '100vh', background: theme.color.bg }}>
+      <aside
+        style={{
+          width: '260px',
+          flexShrink: 0,
+          borderRight: `1px solid ${theme.color.border}`,
+          background: theme.color.surface,
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '1rem',
+          gap: '1rem',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <span
+            style={{
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              color: theme.color.textMuted,
+              textTransform: 'uppercase',
+            }}
+          >
+            Pages
+          </span>
+          {token ? (
+            <ArtifactSelector artifacts={artifacts} artifactPath={artifactPath} onChange={setArtifactPath} />
+          ) : (
+            <span style={{ color: theme.color.textMuted, fontSize: '0.9rem' }}>Log in to see available pages.</span>
+          )}
+        </div>
+
+        <Link href="/chat" style={{ fontSize: '0.9rem', fontWeight: 600, color: theme.color.primary, textDecoration: 'none' }}>
           AI Chat →
         </Link>
-      </header>
 
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-        {catalogError && <p style={{ padding: '1rem', color: 'crimson' }}>{catalogError}</p>}
-        {loading && <p style={{ padding: '1rem' }}>Loading token…</p>}
-        {error && <p style={{ padding: '1rem', color: 'crimson' }}>{error}</p>}
-        {!catalogLoading && artifacts.length === 0 && !catalogError && (
-          <p style={{ padding: '1rem', color: '#888' }}>No artifacts available for role &quot;{role}&quot;.</p>
-        )}
-        {artifactSrc && (
-          <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-            <ArtifactFrame src={artifactSrc} title={artifactPath} />
-          </div>
-        )}
-      </main>
+        <div style={{ borderTop: `1px solid ${theme.color.border}`, paddingTop: '0.85rem' }}>
+          <SupabaseSessionWidget role={role} popupPlacement="above" />
+        </div>
+      </aside>
+
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          {!token && <p style={{ padding: '1rem', color: theme.color.textMuted }}>Log in with Supabase to view artifacts.</p>}
+          {token && catalogError && <p style={{ padding: '1rem', color: theme.color.danger }}>{catalogError}</p>}
+          {token && catalogLoading && <p style={{ padding: '1rem', color: theme.color.textMuted }}>Loading artifacts…</p>}
+          {token && !catalogLoading && artifacts.length === 0 && !catalogError && (
+            <p style={{ padding: '1rem', color: theme.color.textMuted }}>No artifacts available for role &quot;{role}&quot;.</p>
+          )}
+          {artifactSrc && (
+            <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+              <ArtifactFrame src={artifactSrc} title={artifactPath} />
+            </div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

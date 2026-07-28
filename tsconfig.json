@@ -10,9 +10,6 @@
       "path": "./packages/shared-auth"
     },
     {
-      "path": "./services/backend-server"
-    },
-    {
       "path": "./apps/artifacts-viewer"
     },
     {

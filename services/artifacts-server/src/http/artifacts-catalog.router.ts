@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { InvalidTokenError } from '@org/shared-auth/server';
 import type { AuthenticationProvider } from '../auth/authentication-provider.js';
 import type { ArtifactCatalogService } from '../service/artifact-catalog.service.js';
 
@@ -10,16 +9,7 @@ export function createArtifactsCatalogRouter(
   const router = Router();
 
   router.get('/api/artifacts', async (req, res) => {
-    let authContext;
-    try {
-      authContext = authenticationProvider.authenticate(req);
-    } catch (err) {
-      if (err instanceof InvalidTokenError) {
-        res.status(401).json({ error: err.message });
-        return;
-      }
-      throw err;
-    }
+    const authContext = await authenticationProvider.authenticate(req);
 
     if (!authContext) {
       res.status(401).json({ error: 'Authentication required' });

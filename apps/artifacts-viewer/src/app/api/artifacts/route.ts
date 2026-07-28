@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isRole } from '@org/shared-auth';
-import { ArtifactsCatalogError, listArtifactsForRole } from '../../../lib/api/artifacts-catalog-client';
+import { ArtifactsCatalogError, listArtifacts } from '../../../lib/api/artifacts-catalog-client';
 
 export async function GET(req: NextRequest) {
-  const role = req.nextUrl.searchParams.get('role');
-
-  if (!role || !isRole(role)) {
-    return NextResponse.json({ error: 'Query parameter "role" must be a valid role' }, { status: 400 });
+  const header = req.headers.get('authorization');
+  if (!header?.startsWith('Bearer ')) {
+    return NextResponse.json(
+      { error: 'Authorization: Bearer <supabase access token> header is required' },
+      { status: 401 },
+    );
   }
+  const accessToken = header.slice('Bearer '.length).trim();
 
   try {
-    const artifacts = await listArtifactsForRole(role);
-    return NextResponse.json({ artifacts });
+    const { role, artifacts } = await listArtifacts(accessToken);
+    return NextResponse.json({ role, artifacts });
   } catch (err) {
     if (err instanceof ArtifactsCatalogError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

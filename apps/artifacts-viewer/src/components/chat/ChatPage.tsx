@@ -2,34 +2,34 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import type { Role } from '@org/shared-auth';
-import { useArtifactToken } from '../../hooks/useArtifactToken';
+import { ROLES } from '@org/shared-auth';
+import { useSupabaseSession } from '../../lib/supabase/supabase-session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../../hooks/useArtifactSrc';
 import { fetchProviders, sendChatMessage, ChatRequestError } from '../../lib/api/chat-client';
 import type { ChatMessage, Provider, ProviderInfo } from '../../lib/chat/types';
 import type { ArtifactCatalogEntry } from '../../lib/artifacts/types';
-import { RoleSwitcher } from '../RoleSwitcher';
 import { ArtifactFrame } from '../ArtifactFrame';
 import { SupabaseSessionWidget } from '../supabase/SupabaseSessionWidget';
 import { ProviderSelector } from './ProviderSelector';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatComposer } from './ChatComposer';
 import { ExistingArtifactsPanel } from './ExistingArtifactsPanel';
+import { theme, secondaryButtonStyle } from '../../lib/ui/theme';
 
 export function ChatPage() {
+  const { session } = useSupabaseSession();
+  const token = session?.accessToken ?? null;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [slug, setSlug] = useState<string | null>(null);
   const [urlPath, setUrlPath] = useState<string | null>(null);
   const [previewSlug, setPreviewSlug] = useState<string | null>(null);
-  const [role, setRole] = useState<Role>('admin');
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [provider, setProvider] = useState<Provider>('claude');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { token } = useArtifactToken(role);
-  const { artifacts } = useArtifactCatalog(role);
+  const { artifacts, role } = useArtifactCatalog(token);
   const artifactSrc = useArtifactSrc(urlPath ?? '', token);
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export function ChatPage() {
       const response = await sendChatMessage({
         messages: nextMessages,
         slug,
-        roles: ['admin', 'manager'],
+        roles: ROLES.slice(),
         provider,
       });
       setMessages(response.messages);
@@ -95,39 +95,70 @@ export function ChatPage() {
   const isReadOnlyPreview = previewSlug !== null && previewSlug !== slug;
 
   return (
-    <div style={{ display: 'flex', height: '100vh' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', width: '35%', minWidth: '320px', borderRight: '1px solid #ddd' }}>
-        <header style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '1rem', borderBottom: '1px solid #ddd' }}>
+    <div style={{ display: 'flex', height: '100vh', background: theme.color.bg }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: '380px',
+          minWidth: '320px',
+          borderRight: `1px solid ${theme.color.border}`,
+          background: theme.color.surface,
+        }}
+      >
+        <header style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem', borderBottom: `1px solid ${theme.color.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Link href="/">← Viewer</Link>
-            <button type="button" onClick={handleNew}>
+            <Link href="/" style={{ fontSize: '0.85rem', color: theme.color.textMuted, textDecoration: 'none' }}>
+              ← Viewer
+            </Link>
+            <button type="button" onClick={handleNew} style={secondaryButtonStyle}>
               + New
             </button>
           </div>
           <ProviderSelector providers={providers} provider={provider} onChange={setProvider} />
-          <SupabaseSessionWidget />
           {slug && (
-            <span style={{ fontSize: '0.85rem', color: '#555' }}>
-              Editing: <strong>{slug}</strong>
+            <span style={{ fontSize: '0.8rem', color: theme.color.textMuted }}>
+              Editing: <strong style={{ color: theme.color.text }}>{slug}</strong>
             </span>
           )}
-          <ExistingArtifactsPanel artifacts={artifacts} activeSlug={slug} onRead={handleRead} onEdit={handleEdit} />
         </header>
+
+        {token && (
+          <div style={{ padding: '0.85rem 1rem', borderBottom: `1px solid ${theme.color.border}`, overflowY: 'auto', maxHeight: '35vh' }}>
+            <ExistingArtifactsPanel artifacts={artifacts} activeSlug={slug} onRead={handleRead} onEdit={handleEdit} />
+          </div>
+        )}
+
         <ChatMessageList messages={messages} pending={pending} />
-        {error && <p style={{ color: 'crimson', padding: '0 1rem' }}>{error}</p>}
+        {error && <p style={{ color: theme.color.danger, padding: '0 1rem', fontSize: '0.85rem' }}>{error}</p>}
         <ChatComposer disabled={pending} onSend={handleSend} />
+
+        <div style={{ borderTop: `1px solid ${theme.color.border}`, padding: '0.85rem 1rem' }}>
+          <SupabaseSessionWidget role={role} popupPlacement="above" />
+        </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-        <header style={{ padding: '1rem', borderBottom: '1px solid #ddd' }}>
-          <RoleSwitcher role={role} onChange={setRole} />
-        </header>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+        {isReadOnlyPreview && (
+          <p
+            style={{
+              padding: '0.6rem 1rem',
+              margin: 0,
+              background: '#fff8e1',
+              borderBottom: `1px solid ${theme.color.border}`,
+              fontSize: '0.85rem',
+              color: '#92700c',
+            }}
+          >
+            Read-only preview — click <strong>Edit</strong> on this artifact to modify it.
+          </p>
+        )}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          {!urlPath && <p style={{ padding: '1rem', color: '#888' }}>No artifact yet — start chatting to create one.</p>}
-          {isReadOnlyPreview && (
-            <p style={{ padding: '0.5rem 1rem', margin: 0, background: '#fffbe6', fontSize: '0.85rem' }}>
-              Read-only preview — click <strong>Edit</strong> on this artifact to modify it.
-            </p>
+          {!token && (
+            <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>Log in with Supabase to preview artifacts.</p>
+          )}
+          {token && !urlPath && (
+            <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>No artifact yet — start chatting to create one.</p>
           )}
           {artifactSrc && (
             <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>

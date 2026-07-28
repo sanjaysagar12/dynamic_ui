@@ -2,21 +2,23 @@
 
 import { useState } from 'react';
 import { useSupabaseSession } from '../../lib/supabase/supabase-session-context';
+import { ProfileMenu } from './ProfileMenu';
+import { theme, inputStyle, primaryButtonStyle, secondaryButtonStyle } from '../../lib/ui/theme';
 
-export function SupabaseSessionWidget() {
+export interface SupabaseSessionWidgetProps {
+  /** Shown alongside the email once logged in — the current user's app role. */
+  role?: string | null;
+  /** Which side the logout popup opens toward. See ProfileMenu. */
+  popupPlacement?: 'above' | 'below';
+}
+
+export function SupabaseSessionWidget({ role, popupPlacement }: SupabaseSessionWidgetProps) {
   const { session, pending, error, info, login, signUp, logout } = useSupabaseSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   if (session) {
-    return (
-      <span style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        Supabase: <strong>{session.email}</strong>
-        <button type="button" onClick={logout}>
-          Log out
-        </button>
-      </span>
-    );
+    return <ProfileMenu email={session.email} role={role} onLogout={logout} popupPlacement={popupPlacement} />;
   }
 
   return (
@@ -25,30 +27,32 @@ export function SupabaseSessionWidget() {
         e.preventDefault();
         login(email, password);
       }}
-      style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', fontSize: '0.85rem' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}
     >
       <input
         type="email"
-        placeholder="supabase email"
+        placeholder="Email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        style={{ width: '160px' }}
+        style={inputStyle}
       />
       <input
         type="password"
-        placeholder="password"
+        placeholder="Password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        style={{ width: '110px' }}
+        style={inputStyle}
       />
-      <button type="submit" disabled={pending}>
-        Log in
-      </button>
-      <button type="button" disabled={pending} onClick={() => signUp(email, password)}>
-        Sign up
-      </button>
-      {error && <span style={{ color: 'crimson' }}>{error}</span>}
-      {info && <span style={{ color: '#0a7' }}>{info}</span>}
+      <div style={{ display: 'flex', gap: '0.4rem' }}>
+        <button type="submit" disabled={pending} style={{ ...primaryButtonStyle, flex: 1 }}>
+          Log in
+        </button>
+        <button type="button" disabled={pending} onClick={() => signUp(email, password)} style={{ ...secondaryButtonStyle, flex: 1 }}>
+          Sign up
+        </button>
+      </div>
+      {error && <span style={{ color: theme.color.danger, fontSize: '0.8rem' }}>{error}</span>}
+      {info && <span style={{ color: theme.color.success, fontSize: '0.8rem' }}>{info}</span>}
     </form>
   );
 }

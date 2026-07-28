@@ -1,5 +1,6 @@
 import { Router, type NextFunction, type Response } from 'express';
 import type { AuthService } from './auth.service.js';
+import { requireSupabaseAuth, getSupabaseAuth } from './require-supabase-auth.js';
 import { SupabaseNotConfiguredError, SupabaseRequestError } from '../core/errors.js';
 
 export function createAuthController(authService: AuthService): Router {
@@ -26,6 +27,15 @@ export function createAuthController(authService: AuthService): Router {
         return;
       }
       res.json(await authService.signIn(email, password));
+    } catch (err) {
+      handleAuthError(err, res, next);
+    }
+  });
+
+  router.post('/verify', requireSupabaseAuth, async (req, res, next) => {
+    try {
+      const { accessToken } = getSupabaseAuth(req);
+      res.json(await authService.verify(accessToken));
     } catch (err) {
       handleAuthError(err, res, next);
     }

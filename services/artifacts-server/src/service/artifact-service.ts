@@ -1,5 +1,4 @@
 import type { Request } from 'express';
-import { InvalidTokenError } from '@org/shared-auth/server';
 import type { ArtifactPathResolver, ResolvedArtifactRequest } from '../resolution/artifact-path-resolver.js';
 import type { ManifestRepository } from '../manifest/manifest-repository.js';
 import type { AuthenticationProvider } from '../auth/authentication-provider.js';
@@ -28,15 +27,7 @@ export class ArtifactService {
 
     const manifest = await this.manifestRepository.load(resolved.artifactDir);
 
-    let authContext;
-    try {
-      authContext = this.authenticationProvider.authenticate(req);
-    } catch (err) {
-      if (err instanceof InvalidTokenError) {
-        throw new AuthenticationRequiredError(err.message);
-      }
-      throw err;
-    }
+    const authContext = await this.authenticationProvider.authenticate(req);
 
     if (!authContext) {
       throw new AuthenticationRequiredError();

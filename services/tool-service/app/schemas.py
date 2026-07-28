@@ -1,8 +1,6 @@
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
-Role = Literal["admin", "manager"]
+from app.role_config import Role
 
 
 class WriteArtifactRequest(BaseModel):

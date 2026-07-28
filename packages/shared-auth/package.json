@@ -13,19 +13,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    },
-    "./server": {
-      "@org/source": "./src/server.ts",
-      "types": "./dist/server.d.ts",
-      "import": "./dist/server.js",
-      "default": "./dist/server.js"
     }
   },
   "nx": {
     "name": "shared-auth"
   },
   "dependencies": {
-    "tslib": "^2.3.0",
-    "jsonwebtoken": "^9.0.0"
+    "tslib": "^2.3.0"
   }
 }

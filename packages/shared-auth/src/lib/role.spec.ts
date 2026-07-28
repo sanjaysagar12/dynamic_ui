@@ -2,8 +2,8 @@ import { isRole } from './role.js';
 
 describe('isRole', () => {
   it('accepts known roles', () => {
-    expect(isRole('admin')).toBe(true);
-    expect(isRole('manager')).toBe(true);
+    expect(isRole('OWNER')).toBe(true);
+    expect(isRole('STOREKEEPER')).toBe(true);
   });
 
   it('rejects unknown values', () => {

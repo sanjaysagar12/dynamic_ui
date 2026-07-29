@@ -1,1 +1,3 @@
-artifacts
+artifacts/*
+!artifacts/AGENTS.md
+!artifacts/.opencode/

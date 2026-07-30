@@ -6,6 +6,7 @@ import { AuthService } from './auth/auth.service.js';
 import { createAuthController } from './auth/auth.controller.js';
 import { RecordsService } from './data/records.service.js';
 import { createRecordsController } from './data/records.controller.js';
+import { errorHandler } from './middleware/error-handler.js';
 
 export function createApp(config: AppConfig): Express {
   const app = express();
@@ -21,6 +22,8 @@ export function createApp(config: AppConfig): Express {
 
   app.use('/auth', createAuthController(authService));
   app.use('/data', createRecordsController(recordsService));
+
+  app.use(errorHandler);
 
   return app;
 }

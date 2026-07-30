@@ -26,17 +26,6 @@ class GenerateArtifactResponse(BaseModel):
     provider: Provider
 
 
-class ArtifactSpec(BaseModel):
-    """Structured output shape requested from the LLM."""
-
-    reply: str
-    slug: str
-    title: str
-    index_html: str
-    css: str
-    js: str
-
-
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str

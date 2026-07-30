@@ -1,21 +1,22 @@
 # Dynamic UI — Architecture Overview
 
-This Nx workspace implements an **Artifacts platform**: a static-file server that serves role-gated "artifacts" (self-contained HTML/CSS/JS bundles) similarly to Apache, a backend that issues development JWTs, a Supabase middle layer that holds the only database credentials in the system, an AI agent that generates and updates artifacts from a chat prompt (Claude or Gemini) using a real-schema-aware tool, and a Next.js viewer that renders artifacts in a sandboxed iframe and mediates their data access over `postMessage`.
+This Nx workspace implements an **Artifacts platform**: a static-file server that serves role-gated "artifacts" (self-contained HTML/CSS/JS bundles) similarly to Apache, a Supabase middle layer that holds the only database credentials in the system, an AI agent that drives [opencode](https://opencode.ai) to generate and update artifacts from a chat prompt, and a Next.js viewer that renders artifacts in a sandboxed iframe and mediates their data access over `postMessage`.
 
 ```
 apps/
-  artifacts-viewer/     Next.js app — role switcher, AI chat page, sandboxed iframe viewer + postMessage data bridge (port 4200)
+  artifacts-viewer/     Next.js app — AI chat page, sandboxed iframe viewer + postMessage data bridge (port 4200)
 services/
-  artifacts-server/     Express app — serves artifacts, enforces JWT auth + role authorization + a locked-down CSP (port 3000)
-  backend-server/        Express app — issues development JWTs (port 3334)
-  supabase-service/      Express app — anon-key-only middle layer between the parent app and Supabase (port 3335)
-  tool-service/          Python/FastAPI app — writes/reads artifact files on disk, and is the only holder of the Supabase secret key (schema introspection) (port 5001)
-  agent-service/         Python/FastAPI app — turns a chat prompt into an artifact via Claude or Gemini, using a get_schema tool (port 5002)
+  artifacts-server/     Express app — serves artifacts, enforces auth + role authorization + a locked-down CSP (port 3000)
+                          artifacts/.opencode/tool/get_schema.ts + artifacts/AGENTS.md — opencode's project-local schema
+                          tool and artifact-authoring instructions, shared by every artifact directory underneath
+  supabase-service/      Express app — anon-key-only middle layer between the parent app and Supabase; also verifies
+                          Supabase access tokens for other services (port 3335)
+  agent-service/         Python/FastAPI app — turns a chat prompt into an artifact by shelling out to opencode (port 5002)
 packages/
-  shared-auth/           Shared TypeScript library — Role types + JWT signing/verification
+  shared-auth/           Shared TypeScript library — Role types
 ```
 
-All six services run independently and talk to each other only over HTTP; there is no shared runtime state.
+These services run independently and talk to each other only over HTTP; there is no shared runtime state.
 
 ---
 
@@ -129,69 +130,40 @@ GET  /health
 - `data/records.controller.ts` — Express router wiring the above to HTTP verbs
 - `config.ts` — `PORT` (default `3335`), `SUPABASE_URL`, `SUPABASE_ANON_KEY`
 
-**Why no `/schema` endpoint here:** Supabase's own schema/OpenAPI introspection endpoint rejects anon keys outright ("Secret API key required"), which conflicts with this service's anon-key-only design. Schema introspection was moved to `tool-service` instead (§5), which is allowed to hold a secret key because it's never in the runtime request path for artifact data.
+**Why no `/schema` endpoint here:** Supabase's own schema/OpenAPI introspection endpoint rejects anon keys outright ("Secret API key required"), which conflicts with this service's anon-key-only design. Schema introspection instead lives in opencode's own `get_schema` tool (§6), which is allowed to hold a secret key because it's never in the runtime request path for artifact data.
 
 ---
 
-## 5. `services/tool-service` (port 5001, Python/FastAPI)
+## 5. `services/agent-service` (port 5002, Python/FastAPI)
 
-The only thing in the system with filesystem write access to `services/artifacts-server/artifacts/`, **and** the only thing in the system that holds the Supabase **secret** key. Both exist so the AI agent manipulates artifacts and looks up real schema through a narrow, validated API rather than touching disk or Supabase directly.
-
-**Endpoints:**
-```
-POST /tools/write-artifact   { slug, roles, files: {path: content} }  → creates or overwrites an artifact (writes manifest.json + every file)
-GET  /tools/read-artifact?slug=...                                    → { slug, roles, files } or 404
-GET  /tools/list-artifacts                                            → catalog of all artifacts on disk
-GET  /tools/get-schema                                                → { tables: [{ table, columns: [{name, type, nullable}] }] }
-GET  /health
-```
-
-**Structure:**
-- `app/services/artifact_writer.py` — `ArtifactWriterService`: validates `slug`/file paths against path traversal (rejects `..`, confines every resolved path to `ARTIFACTS_ROOT`), requires `index.html` among the written files, writes `manifest.json` from `roles`
-- `app/services/artifact_catalog.py` — walks the artifacts tree for `list-artifacts`
-- `app/services/schema_service.py` — `SchemaService`: calls Supabase's `GET /rest/v1/` with `Accept: application/openapi+json` **using the secret key** (the anon key is rejected by this specific endpoint), parses table/column definitions out of the returned OpenAPI document
-- `app/routers/tools.py` — FastAPI router, maps `InvalidArtifactError` → 400, missing artifact → 404, schema errors → 503/whatever status Supabase returned
-- `app/config.py` — `PORT` (default `5001`), `ARTIFACTS_ROOT` (default `../artifacts-server/artifacts`, i.e. the same folder `artifacts-server` serves from), `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (loaded from `.env` via `python-dotenv`)
-
-Registered as a plain Nx `project.json` (not a package.json-based JS project) with `install` / `serve` / `start` targets running `pip install` / `uvicorn` directly — Nx auto-discovers any `project.json` in the repo regardless of language.
-
-**Why the secret key is safe here:** `get-schema` is only ever called by `agent-service` at artifact-*generation* time, server-side, to look up real table/column names before writing code — it is never in the path of a running artifact's data requests (those go through `supabase-service`, anon-key-only, RLS-scoped). No artifact, and no browser code, ever sees this key or this endpoint.
-
----
-
-## 6. `services/agent-service` (port 5002, Python/FastAPI)
-
-Takes a natural-language chat prompt, asks an LLM to produce a complete artifact (or an updated version of one), and calls `tool-service` to persist it. The LLM has a real tool — `get_schema` — that it can call mid-generation to look up the actual Supabase schema before writing persistence code, so generated artifacts reference real table/column names instead of guessing.
+Takes a natural-language chat prompt and drives [opencode](https://opencode.ai) — run as a subprocess, one invocation per chat turn — to generate or edit the artifact's files directly on disk. There is no intermediate "write artifact" service anymore: opencode has real `read`/`write`/`edit` tools and operates straight against `services/artifacts-server/artifacts/<slug>/`, the same directory `artifacts-server` serves from.
 
 **Endpoints:**
 ```
 GET  /agent/providers                          → { default, providers: [{id, label, model}] } — for populating a model picker
-POST /agent/generate-artifact  { prompt, slug?, roles?, provider?, model? }  → one-shot create
+POST /agent/generate-artifact  { prompt, slug?, roles?, provider?, model? }  → one-shot create (thin wrapper around /chat)
 POST /agent/chat  { messages, slug?, roles?, provider?, model? }             → multi-turn create/update, returns updated message history
 GET  /health
 ```
 
-**Multi-provider LLM abstraction** (`app/services/providers/`):
-- `base.py` — `ArtifactLLMClient` ABC (`generate(messages, context_files) -> ArtifactSpec`), the shared JSON schema every provider is constrained to (`reply`, `slug`, `title`, `index_html`, `css`, `js`), `build_system_prompt()` (folds an artifact's *current* files into the prompt when updating, so the model returns a complete, coherent replacement rather than a diff), the `get_schema` tool description, and `format_schema_for_tool_result()`
-- `claude_provider.py` — Anthropic Messages API. Runs a bounded tool-calling loop first (plain `messages.create` with `tools=[get_schema]`, up to 3 iterations, executing `tool_client.get_schema()` on request) and folds any tool calls/results into the conversation; the final answer is then a separate `messages.stream` call with `output_config.format` (`json_schema`) and adaptive thinking
-- `gemini_provider.py` — `google-genai`. Same two-phase shape: a tool-enabled `generate_content` loop using `types.FunctionDeclaration`/`function_call` parts, then a final call with `response_schema=ArtifactSpec` giving a typed `.parsed` result
-- `factory.py` — `get_llm_client(provider, model_override, settings, tool_client)` picks the implementation, threading through the shared `ToolServiceClient`; `list_providers()` backs `GET /agent/providers`
-- `app/services/tool_client.py` — `ToolServiceClient`: HTTP client for all of `tool-service`'s endpoints, including `get_schema()`
+**How a chat turn works** (`app/services/chat_service.py`):
+1. Resolve the artifact's `slug` — the caller's `slug` if editing, otherwise a deterministic slugified form of the first message (`app/services/slug.py`; no LLM round-trip just to name the folder).
+2. Resolve which model opencode should use: `--model anthropic/<model>` or `--model google/<model>`, built from the request's `provider`/`model` (or the `claude`/`gemini` defaults) — see `PROVIDER_MODEL_PREFIX` in `config.py`. Provider *credentials* are opencode's own concern (`opencode auth login`, or `ANTHROPIC_API_KEY`/`GEMINI_API_KEY` inherited from this process's environment), not something this service holds.
+3. Run opencode (`app/services/opencode_runner.py`): `opencode run --dir <artifact_dir> --format json --model <model> [--session <id>] "<prompt>"` as a subprocess, parsing its newline-delimited JSON event stream for the final assistant text (the `reply`) and its session id. A session id is cached per slug (in-memory) so a follow-up edit continues the same opencode session instead of re-discovering the directory from scratch; when there's no session to continue, the full message transcript is reconstructed into the prompt instead of just the latest message, so context is never silently lost.
+4. Write `manifest.json` directly (`app/services/manifest.py`) — the roles/title convention artifacts-server's catalog and authorization depend on. opencode never touches this file itself (see `AGENTS.md` below); this service does it after a successful run, so a failed/partial opencode run never leaves a manifest for broken content.
+5. Enumerate whatever files actually changed on disk (`artifact_dir.rglob("*")`, excluding `manifest.json`) to report `files_written` — no separate service call needed since this process already has the artifacts-root filesystem.
 
-Provider/model selection: `LLM_PROVIDER` env var (default `gemini`) is the default; each request can override via `provider`/`model`. Per-provider model defaults also come from env: `ANTHROPIC_MODEL` (default `claude-opus-4-8`), `GEMINI_MODEL` (default `gemini-2.5-flash`), plus `GEMINI_API_KEY` (Claude's key resolves however the Anthropic SDK normally resolves it — env var, auth token, or CLI profile). **This service holds no Supabase credentials of its own** — schema lookups are delegated entirely to `tool-service`.
+opencode itself gets its capabilities from two project-local files under `services/artifacts-server/artifacts/`, discovered automatically by walking up from the artifact's own directory:
+- **`AGENTS.md`** — the three-file artifact shape (`index.html`, `assets/style.css`, `assets/app.js`), no `<form>`/`type="submit"` (sandboxed without `allow-forms`), no external libraries/CDNs, Tailwind usage (link `../_shared/tailwind.min.css` before `assets/style.css`), the exact `postMessage` data-bridge wire protocol artifacts must use for persisted data (mirrors `useArtifactDataBridge.ts`, § 7), and an instruction to never touch `manifest.json`.
+- **`.opencode/tool/get_schema.ts`** — a custom opencode tool (ported from the schema-introspection logic that used to live in a separate `tool-service`) that calls Supabase's `GET /rest/v1/` with `Accept: application/openapi+json` **using the secret key**, plus a `get_table_constraints` RPC for primary/foreign/unique/check constraints, formatted for the model to read before writing any persistence code.
 
-**System prompt contract** (`BASE_SYSTEM_PROMPT`) mandates, in order:
-1. The three-file artifact shape (`index.html`, `assets/style.css`, `assets/app.js`), no `<form>`/`type="submit"` (sandboxed without `allow-forms`), no external libraries or CDNs.
-2. **Tailwind CSS** via the shared vendored asset — link `../_shared/tailwind.min.css` before `assets/style.css` and build the UI primarily with utility classes.
-3. **postMessage bridge only** for persisted data — the exact wire protocol implemented by `useArtifactDataBridge.ts` (below), including the precise response shapes per HTTP method (list responses are wrapped as `{ data: [...] }`; create/update responses are the bare row; delete resolves to `null`), which query keys are reserved (`order`, `limit`) vs. plain filters, and an explicit instruction to omit unused arguments rather than pass `null` — the artifact must **never** call Supabase or the parent's `/api/data/*` directly.
+**Config** (`app/config.py`): `PORT` (default `5002`), `ARTIFACTS_SERVER_URL`, `ARTIFACTS_ROOT` (default `../artifacts-server/artifacts`), `OPENCODE_BIN` (default `opencode`, resolved via `PATH`), `OPENCODE_TIMEOUT_SECONDS` (default `300`), `LLM_PROVIDER`/`ANTHROPIC_MODEL`/`GEMINI_MODEL` (default model choices), plus `SUPABASE_URL`/`SUPABASE_SECRET_KEY` — needed here (not just historically in a separate service) because the opencode subprocess inherits this process's environment, and that's what its `get_schema` tool reads.
 
-**Chat/update flow** (`app/services/chat_service.py`): if the request carries a `slug`, it first calls `tool-service`'s `read-artifact` to fetch the artifact's current files as context; the LLM returns a full replacement; `tool-service`'s `write-artifact` overwrites it (create and update are the same write call — there's no separate "patch" endpoint). The response includes the full updated message history so the Next.js chat page can just replace its local state with it.
-
-Both the single-shot and chat flows share a small `artifact_persistence.py` helper so the "call the LLM → write via tool-service → build a preview URL" sequence isn't duplicated.
+**Why the secret key is safe here:** `get_schema` is only ever invoked by opencode at artifact-*generation* time, server-side, to look up real table/column names before writing code — it is never in the path of a running artifact's data requests (those go through `supabase-service`, anon-key-only, RLS-scoped). No artifact, and no browser code, ever sees this key or this endpoint.
 
 ---
 
-## 7. `apps/artifacts-viewer` (port 4200)
+## 6. `apps/artifacts-viewer` (port 4200)
 
 A Next.js (App Router) app that lets a user pick a role and an artifact, fetches a token, renders the artifact in an isolated iframe, and mediates all of that artifact's data access over `postMessage` — the artifact itself never receives a Supabase token or calls any backend directly.
 
@@ -247,8 +219,8 @@ Flow: composer submits → optimistic user message appended → `POST /api/chat`
 | A forged/spoofed `postMessage` sender | Validated via `event.source === iframe.contentWindow`, not `event.origin` (which is `"null"` for a sandboxed frame either way) |
 | Row-level authorization on actual data | Postgres RLS policies (`auth.uid() = user_id`, etc.) — enforced by Supabase itself against the user's own JWT, not application code |
 | Runtime Supabase access is over-privileged | `supabase-service` uses **only** the anon key, always scoped to the calling user's JWT (`global.headers.Authorization`) |
-| Schema introspection needs a secret key Supabase requires for that endpoint | Isolated to `tool-service`'s `get-schema` tool — generation-time only, never in any runtime artifact/data request path |
-| AI-generated code doesn't know the real schema | The `get_schema` tool (Claude/Gemini tool-calling loop) fetches real table/column names before code is written |
+| Schema introspection needs a secret key Supabase requires for that endpoint | Isolated to opencode's own `get_schema` tool — generation-time only, never in any runtime artifact/data request path |
+| AI-generated code doesn't know the real schema | The `get_schema` tool fetches real table/column/constraint names before code is written |
 
 `services/artifacts-server/artifacts/sandbox-security-test/` is a live artifact that exercises every row in this table (except the RLS/schema ones, which aren't reachable from an artifact by design) and reports pass/fail for each — open it any time to re-verify the sandbox after changing anything here.
 
@@ -260,4 +232,4 @@ See the top-level [README.md](./README.md) for step-by-step setup and run instru
 
 ## Status
 
-Everything above is implemented, builds, typechecks, and lints. Verified end-to-end live against a real Supabase project: token issuance → role-based 200/403/404 responses → sandboxed rendering; tool-service write/read round-trip; the full agent-service → tool-service → artifacts-server chain; the postMessage data bridge performing real CRUD against Supabase through RLS; `get-schema` returning the real `todos` table schema via the secret key held only in `tool-service`; the CSP blocking external/internal fetches from inside the sandboxed iframe. Not yet built: a real identity provider (the token endpoint is explicitly a *dev* stand-in), an artifact publishing/upload flow beyond the agent, and e2e test suites (removed from this workspace for now).
+Everything above is implemented, builds, typechecks, and lints. Verified end-to-end live against a real Supabase project: Supabase login → role-based 200/403/404 responses → sandboxed rendering; the full agent-service → opencode → artifacts-server chain (both creating a new artifact and editing an existing one across turns); the postMessage data bridge performing real CRUD against Supabase through RLS; `get_schema` returning the real database schema via the secret key held only by opencode's tool; the CSP blocking external/internal fetches from inside the sandboxed iframe. Not yet built: an artifact publishing/upload flow beyond the agent, and e2e test suites (removed from this workspace for now).

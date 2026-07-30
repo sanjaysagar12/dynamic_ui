@@ -14,13 +14,18 @@ async function parseErrorDetail(response: Response): Promise<string> {
   return (body && typeof body.detail === 'string' && body.detail) || `Agent service error (status ${response.status})`;
 }
 
-/** Sends a chat turn to the Agent Service, which generates/updates an artifact via the Tool Service. */
+/** Sends a chat turn to the Agent Service, which drives opencode to generate/update an artifact.
+ *  A complex multi-screen artifact can legitimately take several minutes, so this needs an
+ *  explicit timeout longer than Node's undici default (~300s) — otherwise the fetch itself gets
+ *  aborted client-side before agent-service's own (longer) OPENCODE_TIMEOUT_SECONDS budget is up,
+ *  surfacing as a generic network error even though the request was about to succeed. */
 export async function chatWithAgent(payload: ChatRequestPayload): Promise<ChatResponsePayload> {
   const response = await fetch(new URL('/agent/chat', getAgentServiceUrl()), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     cache: 'no-store',
+    signal: AbortSignal.timeout(950_000),
   });
 
   if (!response.ok) {

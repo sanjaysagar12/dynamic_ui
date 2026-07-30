@@ -1,34 +1,33 @@
 from app.config import Settings
-from app.schemas import ChatMessage, GenerateArtifactRequest, GenerateArtifactResponse
-from app.services.artifact_persistence import persist_spec
-from app.services.providers.factory import get_llm_client
-from app.services.tool_client import ToolServiceClient
+from app.schemas import ChatMessage, ChatRequest, GenerateArtifactRequest, GenerateArtifactResponse
+from app.services.chat_service import ChatArtifactService
 
 
 class ArtifactGeneratorService:
+    """Thin wrapper around ChatArtifactService for the one-shot /generate-artifact
+    endpoint, so there's a single place driving opencode rather than a second
+    copy of that logic."""
+
     def __init__(self, settings: Settings) -> None:
-        self._settings = settings
-        self._tool_client = ToolServiceClient(settings.tool_service_url)
+        self._chat_service = ChatArtifactService(settings)
 
     def generate(self, request: GenerateArtifactRequest) -> GenerateArtifactResponse:
-        provider = request.provider or self._settings.default_provider
-        client = get_llm_client(provider, request.model, self._settings, self._tool_client)
-
-        spec = client.generate(
+        chat_request = ChatRequest(
             messages=[ChatMessage(role="user", content=request.prompt)],
-            context_files=None,
+            slug=request.slug,
+            roles=request.roles,
+            provider=request.provider,
+            model=request.model,
         )
-        slug = request.slug or spec.slug
-
-        result = persist_spec(self._tool_client, self._settings.artifacts_server_url, slug, request.roles, spec)
+        result = self._chat_service.chat(chat_request)
 
         return GenerateArtifactResponse(
-            slug=result["slug"],
-            title=spec.title,
-            reply=spec.reply,
-            roles=request.roles,
-            url_path=result["url_path"],
-            preview_url=result["preview_url"],
-            files_written=result["files_written"],
-            provider=provider,
+            slug=result.slug,
+            title=result.title,
+            reply=result.reply,
+            roles=result.roles,
+            url_path=result.url_path,
+            preview_url=result.preview_url,
+            files_written=result.files_written,
+            provider=result.provider,
         )

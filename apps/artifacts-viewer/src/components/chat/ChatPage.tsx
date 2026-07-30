@@ -28,6 +28,7 @@ export function ChatPage() {
   const [provider, setProvider] = useState<Provider>('claude');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewReloadKey, setPreviewReloadKey] = useState(0);
 
   const { artifacts, role } = useArtifactCatalog(token);
   const artifactSrc = useArtifactSrc(urlPath ?? '', token);
@@ -64,6 +65,7 @@ export function ChatPage() {
       setSlug(response.slug);
       setUrlPath(response.url_path);
       setPreviewSlug(response.slug);
+      setPreviewReloadKey((k) => k + 1);
     } catch (err) {
       setError(err instanceof ChatRequestError ? err.message : 'Failed to reach the agent service');
     } finally {
@@ -153,6 +155,20 @@ export function ChatPage() {
             Read-only preview — click <strong>Edit</strong> on this artifact to modify it.
           </p>
         )}
+        {artifactSrc && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              padding: '0.5rem 1rem',
+              borderBottom: `1px solid ${theme.color.border}`,
+            }}
+          >
+            <button type="button" onClick={() => setPreviewReloadKey((k) => k + 1)} style={secondaryButtonStyle}>
+              ⟳ Refresh
+            </button>
+          </div>
+        )}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {!token && (
             <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>Log in with Supabase to preview artifacts.</p>
@@ -162,7 +178,7 @@ export function ChatPage() {
           )}
           {artifactSrc && (
             <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-              <ArtifactFrame src={artifactSrc} title={slug ?? 'artifact preview'} />
+              <ArtifactFrame src={artifactSrc} title={slug ?? 'artifact preview'} reloadNonce={previewReloadKey} />
             </div>
           )}
         </main>

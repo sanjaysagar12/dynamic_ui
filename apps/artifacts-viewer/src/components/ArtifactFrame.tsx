@@ -22,16 +22,20 @@ import { useArtifactDataBridge } from '../hooks/useArtifactDataBridge';
 export interface ArtifactFrameProps {
   src: string;
   title: string;
+  /** Bump this (e.g. a counter) to force the iframe to remount and reload
+   *  even when `src` itself hasn't changed — the artifact's underlying files
+   *  can change (a new chat turn, a manual refresh) without its URL doing so. */
+  reloadNonce?: number | string;
 }
 
-export function ArtifactFrame({ src, title }: ArtifactFrameProps) {
+export function ArtifactFrame({ src, title, reloadNonce }: ArtifactFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   useArtifactDataBridge(iframeRef);
 
   return (
     <iframe
       ref={iframeRef}
-      key={src}
+      key={`${src}:${reloadNonce ?? ''}`}
       src={src}
       title={title}
       sandbox="allow-scripts"

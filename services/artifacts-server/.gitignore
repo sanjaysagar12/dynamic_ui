@@ -1,3 +1,5 @@
 artifacts/*
 !artifacts/AGENTS.md
 !artifacts/.opencode/
+!artifacts/_shared/
+!artifacts/sandbox-security-test/

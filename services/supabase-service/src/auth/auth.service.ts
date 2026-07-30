@@ -1,6 +1,24 @@
-import type { Session, User } from '@supabase/supabase-js';
+import type { AuthError, Session, User } from '@supabase/supabase-js';
 import type { SupabaseClientFactory } from '../supabase/supabase-client-factory.js';
 import { SupabaseRequestError } from '../core/errors.js';
+
+/**
+ * supabase-js's own error message is unreliable for the exact case that
+ * matters most: on a 5xx from Supabase's Auth API, the SDK raises an
+ * `AuthRetryableFetchError` whose `.message` is `JSON.stringify()` of an
+ * internal object with no enumerable properties — literally the string
+ * "{}" — instead of the real `msg` field Supabase's API actually returned.
+ * Confirmed live against this project's Auth API returning "Database error
+ * querying schema"; the SDK still surfaced only "{}". Fall back to
+ * `error.name` + status so the caller gets something actionable instead.
+ */
+function describeAuthError(error: AuthError): string {
+  const message = error.message?.trim();
+  if (message && message !== '{}') {
+    return message;
+  }
+  return `${error.name} (Supabase Auth API returned status ${error.status ?? 'unknown'}) — the Auth service may be temporarily unavailable; check the Supabase dashboard's Auth logs.`;
+}
 
 export interface AuthResult {
   accessToken: string | null;
@@ -33,20 +51,22 @@ export class AuthService {
       throw new SupabaseRequestError('Invalid or expired access token', 401);
     }
 
-    // Scoped to the caller's own token so RLS (users_select_self_or_owner)
-    // is what actually allows this read, not a service-role bypass.
+    // Scoped to the caller's own token so RLS is what actually allows this
+    // read, not a service-role bypass. The live `users` table keys directly
+    // on the Supabase auth user id (`id` — not a separate `authUserId` FK)
+    // and has no `isActive` column; a matching row is itself "active".
     const userScopedClient = this.clientFactory.createUserScopedClient(accessToken);
     const { data: profile, error: profileError } = await userScopedClient
       .from('users')
-      .select('role, isActive')
-      .eq('authUserId', userData.user.id)
+      .select('role')
+      .eq('id', userData.user.id)
       .maybeSingle();
 
     if (profileError) {
       throw new SupabaseRequestError(profileError.message, 400);
     }
-    if (!profile || !profile.isActive) {
-      throw new SupabaseRequestError('No active application user for this account', 403);
+    if (!profile) {
+      throw new SupabaseRequestError('No application user found for this account', 403);
     }
 
     return {
@@ -61,7 +81,7 @@ export class AuthService {
     const { data, error } = await client.auth.signUp({ email, password });
 
     if (error) {
-      throw new SupabaseRequestError(error.message, error.status ?? 400);
+      throw new SupabaseRequestError(describeAuthError(error), error.status ?? 400);
     }
 
     return this.toAuthResult(data.session, data.user);
@@ -72,7 +92,7 @@ export class AuthService {
     const { data, error } = await client.auth.signInWithPassword({ email, password });
 
     if (error) {
-      throw new SupabaseRequestError(error.message, error.status ?? 401);
+      throw new SupabaseRequestError(describeAuthError(error), error.status ?? 401);
     }
 
     return this.toAuthResult(data.session, data.user);

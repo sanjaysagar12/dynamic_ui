@@ -1,0 +1,78 @@
+body {
+  font-family: -apple-system, Segoe UI, Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+  background-color: #f4f4f4;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 24px 28px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+  margin-top: 0;
+  color: #222;
+}
+
+.intro {
+  color: #444;
+  line-height: 1.5;
+}
+
+.summary {
+  font-weight: bold;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: #eee;
+}
+
+.summary.all-blocked {
+  background: #d4edda;
+  color: #155724;
+}
+
+.summary.has-leak {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.9em;
+}
+
+th {
+  background-color: #333;
+  color: #fff;
+}
+
+td.detail {
+  font-family: Consolas, Monaco, monospace;
+  font-size: 0.85em;
+  word-break: break-word;
+}
+
+tr.blocked td.result {
+  color: #155724;
+  font-weight: bold;
+}
+
+tr.leaked td.result {
+  color: #721c24;
+  font-weight: bold;
+  background: #fff3f3;
+}

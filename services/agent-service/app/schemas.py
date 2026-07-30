@@ -51,6 +51,32 @@ class ChatResponse(BaseModel):
     messages: list[ChatMessage]
 
 
+class SkillSummary(BaseModel):
+    name: str
+    description: str
+
+
+class Skill(SkillSummary):
+    content: str
+
+
+class ListSkillsResponse(BaseModel):
+    skills: list[Skill]
+
+
+class CreateSkillRequest(BaseModel):
+    name: str = Field(..., min_length=1, description="Kebab-case skill identifier, e.g. 'invoice-pdf-export'")
+    description: str = Field(
+        ..., min_length=1, description="When opencode should use this skill — be specific, e.g. 'USE WHEN ...'"
+    )
+    content: str = Field(..., min_length=1, description="The skill's instructions/procedure, as markdown")
+
+
+class UpdateSkillRequest(BaseModel):
+    description: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1)
+
+
 class ProviderInfo(BaseModel):
     id: Provider
     label: str

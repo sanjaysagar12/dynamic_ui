@@ -1,20 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ROLES } from '@org/shared-auth';
 import { useSupabaseSession } from '../../lib/supabase/supabase-session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../../hooks/useArtifactSrc';
 import { fetchProviders, sendChatMessage, ChatRequestError } from '../../lib/api/chat-client';
+import { fetchSkills } from '../../lib/api/skills-client';
 import type { ChatMessage, Provider, ProviderInfo } from '../../lib/chat/types';
 import type { ArtifactCatalogEntry } from '../../lib/artifacts/types';
+import type { Skill } from '../../lib/skills/types';
 import { ArtifactFrame } from '../ArtifactFrame';
 import { SupabaseSessionWidget } from '../supabase/SupabaseSessionWidget';
 import { ProviderSelector } from './ProviderSelector';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatComposer } from './ChatComposer';
 import { ExistingArtifactsPanel } from './ExistingArtifactsPanel';
+import { SkillsPanel } from './SkillsPanel';
+import { SkillSelector } from './SkillSelector';
 import { theme, secondaryButtonStyle } from '../../lib/ui/theme';
 
 export function ChatPage() {
@@ -29,9 +33,21 @@ export function ChatPage() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [skillsPanelOpen, setSkillsPanelOpen] = useState(false);
 
   const { artifacts, role } = useArtifactCatalog(token);
   const artifactSrc = useArtifactSrc(urlPath ?? '', token);
+
+  const refreshSkills = useCallback(() => {
+    fetchSkills()
+      .then((result) => {
+        setSkills(result);
+        setSelectedSkills((current) => current.filter((name) => result.some((s) => s.name === name)));
+      })
+      .catch(() => setSkills([]));
+  }, []);
 
   useEffect(() => {
     fetchProviders()
@@ -46,10 +62,19 @@ export function ChatPage() {
           { id: 'gemini', label: 'Gemini', model: 'gemini-2.5-flash' },
         ]);
       });
-  }, []);
+    refreshSkills();
+  }, [refreshSkills]);
 
   const handleSend = async (content: string) => {
-    const nextMessages: ChatMessage[] = [...messages, { role: 'user', content }];
+    // Naming the skills explicitly in the message itself is more reliable
+    // than relying on opencode to match the wording against each skill's
+    // description on its own — and stays visible in the transcript, so
+    // there's no hidden text the user can't see.
+    const finalContent =
+      selectedSkills.length > 0
+        ? `Use these skills: ${selectedSkills.map((name) => `"${name}"`).join(', ')}. ${content}`
+        : content;
+    const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: finalContent }];
     setMessages(nextMessages);
     setPending(true);
     setError(null);
@@ -113,11 +138,17 @@ export function ChatPage() {
             <Link href="/" style={{ fontSize: '0.85rem', color: theme.color.textMuted, textDecoration: 'none' }}>
               ← Viewer
             </Link>
-            <button type="button" onClick={handleNew} style={secondaryButtonStyle}>
-              + New
-            </button>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <button type="button" onClick={() => setSkillsPanelOpen((v) => !v)} style={secondaryButtonStyle}>
+                {skillsPanelOpen ? 'Hide skills' : 'Skills'}
+              </button>
+              <button type="button" onClick={handleNew} style={secondaryButtonStyle}>
+                + New
+              </button>
+            </div>
           </div>
           <ProviderSelector providers={providers} provider={provider} onChange={setProvider} />
+          <SkillSelector skills={skills} selected={selectedSkills} onChange={setSelectedSkills} />
           {slug && (
             <span style={{ fontSize: '0.8rem', color: theme.color.textMuted }}>
               Editing: <strong style={{ color: theme.color.text }}>{slug}</strong>
@@ -125,7 +156,13 @@ export function ChatPage() {
           )}
         </header>
 
-        {token && (
+        {skillsPanelOpen && (
+          <div style={{ padding: '0.85rem 1rem', borderBottom: `1px solid ${theme.color.border}`, overflowY: 'auto', maxHeight: '40vh' }}>
+            <SkillsPanel skills={skills} onChange={refreshSkills} />
+          </div>
+        )}
+
+        {token && !skillsPanelOpen && (
           <div style={{ padding: '0.85rem 1rem', borderBottom: `1px solid ${theme.color.border}`, overflowY: 'auto', maxHeight: '35vh' }}>
             <ExistingArtifactsPanel artifacts={artifacts} activeSlug={slug} onRead={handleRead} onEdit={handleEdit} />
           </div>

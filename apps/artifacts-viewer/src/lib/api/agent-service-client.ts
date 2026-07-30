@@ -1,6 +1,7 @@
 import 'server-only';
 import { getAgentServiceUrl } from '../config/env';
 import type { ChatRequestPayload, ChatResponsePayload, ProvidersResponsePayload } from '../chat/types';
+import type { CreateSkillPayload, ListSkillsResponsePayload, Skill, UpdateSkillPayload } from '../skills/types';
 
 export class AgentServiceError extends Error {
   constructor(message: string, readonly status: number) {
@@ -43,4 +44,55 @@ export async function listAgentProviders(): Promise<ProvidersResponsePayload> {
   }
 
   return response.json();
+}
+
+export async function listSkillsFromAgent(): Promise<ListSkillsResponsePayload> {
+  const response = await fetch(new URL('/agent/skills', getAgentServiceUrl()), { cache: 'no-store' });
+
+  if (!response.ok) {
+    throw new AgentServiceError(await parseErrorDetail(response), response.status);
+  }
+
+  return response.json();
+}
+
+export async function createSkillOnAgent(payload: CreateSkillPayload): Promise<Skill> {
+  const response = await fetch(new URL('/agent/skills', getAgentServiceUrl()), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new AgentServiceError(await parseErrorDetail(response), response.status);
+  }
+
+  return response.json();
+}
+
+export async function updateSkillOnAgent(name: string, payload: UpdateSkillPayload): Promise<Skill> {
+  const response = await fetch(new URL(`/agent/skills/${encodeURIComponent(name)}`, getAgentServiceUrl()), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new AgentServiceError(await parseErrorDetail(response), response.status);
+  }
+
+  return response.json();
+}
+
+export async function deleteSkillOnAgent(name: string): Promise<void> {
+  const response = await fetch(new URL(`/agent/skills/${encodeURIComponent(name)}`, getAgentServiceUrl()), {
+    method: 'DELETE',
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new AgentServiceError(await parseErrorDetail(response), response.status);
+  }
 }

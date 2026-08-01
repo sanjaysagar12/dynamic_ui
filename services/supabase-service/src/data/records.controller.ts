@@ -1,63 +1,79 @@
-import { Router, type NextFunction, type Response } from 'express';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { RecordsService } from './records.service.js';
 import { requireSupabaseAuth, getSupabaseAuth } from '../auth/require-supabase-auth.js';
 import { SupabaseNotConfiguredError, SupabaseRequestError } from '../core/errors.js';
 
-export function createRecordsController(recordsService: RecordsService): Router {
-  const router = Router();
-  router.use(requireSupabaseAuth);
-
-  router.get('/:table', async (req, res, next) => {
-    try {
-      const { accessToken } = getSupabaseAuth(req);
-      const filters = Object.fromEntries(
-        Object.entries(req.query).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
-      );
-      res.json({ data: await recordsService.list(accessToken, req.params.table, filters) });
-    } catch (err) {
-      handleError(err, res, next);
-    }
-  });
-
-  router.post('/:table', async (req, res, next) => {
-    try {
-      const { accessToken } = getSupabaseAuth(req);
-      res.status(201).json(await recordsService.create(accessToken, req.params.table, req.body ?? {}));
-    } catch (err) {
-      handleError(err, res, next);
-    }
-  });
-
-  router.patch('/:table/:id', async (req, res, next) => {
-    try {
-      const { accessToken } = getSupabaseAuth(req);
-      res.json(await recordsService.update(accessToken, req.params.table, req.params.id, req.body ?? {}));
-    } catch (err) {
-      handleError(err, res, next);
-    }
-  });
-
-  router.delete('/:table/:id', async (req, res, next) => {
-    try {
-      const { accessToken } = getSupabaseAuth(req);
-      await recordsService.remove(accessToken, req.params.table, req.params.id);
-      res.status(204).send();
-    } catch (err) {
-      handleError(err, res, next);
-    }
-  });
-
-  return router;
+interface TableParams {
+  table: string;
 }
 
-function handleError(err: unknown, res: Response, next: NextFunction): void {
+interface TableIdParams {
+  table: string;
+  id: string;
+}
+
+export function registerRecordsRoutes(fastify: FastifyInstance, recordsService: RecordsService): void {
+  fastify.addHook('preHandler', requireSupabaseAuth);
+
+  fastify.get<{ Params: TableParams }>('/:table', async (request, reply) => {
+    const { accessToken } = getSupabaseAuth(request);
+    const filters = Object.fromEntries(
+      Object.entries(request.query as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    );
+    try {
+      return { data: await recordsService.list(accessToken, request.params.table, filters) };
+    } catch (err) {
+      return handleError(err, reply);
+    }
+  });
+
+  fastify.post<{ Params: TableParams }>('/:table', async (request, reply) => {
+    const { accessToken } = getSupabaseAuth(request);
+    try {
+      const created = await recordsService.create(
+        accessToken,
+        request.params.table,
+        (request.body ?? {}) as Record<string, unknown>,
+      );
+      return reply.code(201).send(created);
+    } catch (err) {
+      return handleError(err, reply);
+    }
+  });
+
+  fastify.patch<{ Params: TableIdParams }>('/:table/:id', async (request, reply) => {
+    const { accessToken } = getSupabaseAuth(request);
+    try {
+      return await recordsService.update(
+        accessToken,
+        request.params.table,
+        request.params.id,
+        (request.body ?? {}) as Record<string, unknown>,
+      );
+    } catch (err) {
+      return handleError(err, reply);
+    }
+  });
+
+  fastify.delete<{ Params: TableIdParams }>('/:table/:id', async (request, reply) => {
+    const { accessToken } = getSupabaseAuth(request);
+    try {
+      await recordsService.remove(accessToken, request.params.table, request.params.id);
+      return reply.code(204).send();
+    } catch (err) {
+      return handleError(err, reply);
+    }
+  });
+}
+
+function handleError(err: unknown, reply: FastifyReply) {
   if (err instanceof SupabaseNotConfiguredError) {
-    res.status(503).json({ error: err.message });
-    return;
+    return reply.code(503).send({ error: err.message });
   }
   if (err instanceof SupabaseRequestError) {
-    res.status(err.status).json({ error: err.message });
-    return;
+    return reply.code(err.status).send({ error: err.message });
   }
-  next(err);
+  throw err;
 }

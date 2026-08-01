@@ -1,5 +1,4 @@
-import express = require('express');
-import type { Express } from 'express';
+import Fastify, { type FastifyInstance } from 'fastify';
 import type { AppConfig } from './config.js';
 import { ArtifactPathResolver } from './resolution/artifact-path-resolver.js';
 import { ManifestRepository } from './manifest/manifest-repository.js';
@@ -7,11 +6,11 @@ import { SupabaseAuthenticationProvider } from './auth/supabase-authentication-p
 import { RoleAuthorizationStrategy } from './authorization/role-authorization-strategy.js';
 import { ArtifactService } from './service/artifact-service.js';
 import { ArtifactCatalogService } from './service/artifact-catalog.service.js';
-import { createArtifactsRouter } from './http/artifacts.router.js';
-import { createArtifactsCatalogRouter } from './http/artifacts-catalog.router.js';
+import { registerArtifactsRoutes } from './http/artifacts.router.js';
+import { registerArtifactsCatalogRoutes } from './http/artifacts-catalog.router.js';
 
-export function createApp(config: AppConfig): Express {
-  const app = express();
+export function createApp(config: AppConfig): FastifyInstance {
+  const fastify = Fastify();
 
   const pathResolver = new ArtifactPathResolver(config.artifactsRoot);
   const manifestRepository = new ManifestRepository();
@@ -26,12 +25,10 @@ export function createApp(config: AppConfig): Express {
   );
   const catalogService = new ArtifactCatalogService(config.artifactsRoot);
 
-  app.get('/health', (_req, res) => {
-    res.json({ status: 'ok' });
-  });
+  fastify.get('/health', async () => ({ status: 'ok' }));
 
-  app.use(createArtifactsCatalogRouter(catalogService, authenticationProvider));
-  app.use(createArtifactsRouter(artifactService));
+  registerArtifactsCatalogRoutes(fastify, catalogService, authenticationProvider);
+  registerArtifactsRoutes(fastify, artifactService);
 
-  return app;
+  return fastify;
 }

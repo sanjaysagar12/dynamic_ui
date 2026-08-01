@@ -1,4 +1,4 @@
-import type { Request } from 'express';
+import type { FastifyRequest } from 'fastify';
 import type { AuthContext } from './auth-context.js';
 
 /**
@@ -8,5 +8,5 @@ import type { AuthContext } from './auth-context.js';
  */
 export interface AuthenticationProvider {
   /** Returns the caller's identity, or null if no credentials were presented or they failed to verify. */
-  authenticate(req: Request): Promise<AuthContext | null>;
+  authenticate(req: FastifyRequest): Promise<AuthContext | null>;
 }

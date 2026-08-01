@@ -1,9 +1,9 @@
 {
-  "name": "@org/supabase-service",
+  "name": "@org/agent-service",
   "version": "0.0.1",
   "private": true,
   "nx": {
-    "name": "supabase-service",
+    "name": "agent-service",
     "targets": {
       "prune-lockfile": {
         "dependsOn": [
@@ -12,8 +12,8 @@
         "cache": true,
         "executor": "@nx/js:prune-lockfile",
         "outputs": [
-          "{workspaceRoot}/services/supabase-service/dist/package.json",
-          "{workspaceRoot}/services/supabase-service/dist/package-lock.json"
+          "{workspaceRoot}/services/agent-service/dist/package.json",
+          "{workspaceRoot}/services/agent-service/dist/package-lock.json"
         ],
         "options": {
           "buildTarget": "build"
@@ -25,7 +25,7 @@
         ],
         "cache": true,
         "outputs": [
-          "{workspaceRoot}/services/supabase-service/dist/workspace_modules"
+          "{workspaceRoot}/services/agent-service/dist/workspace_modules"
         ],
         "executor": "@nx/js:copy-workspace-modules",
         "options": {
@@ -47,15 +47,15 @@
           "build"
         ],
         "options": {
-          "buildTarget": "supabase-service:build",
+          "buildTarget": "agent-service:build",
           "runBuildTargetDependencies": false
         },
         "configurations": {
           "development": {
-            "buildTarget": "supabase-service:build:development"
+            "buildTarget": "agent-service:build:development"
           },
           "production": {
-            "buildTarget": "supabase-service:build:production"
+            "buildTarget": "agent-service:build:production"
           }
         }
       },
@@ -68,7 +68,8 @@
   },
   "dependencies": {
     "fastify": "^5.11.0",
-    "@supabase/supabase-js": "^2.110.7",
+    "cross-spawn": "^7.0.6",
+    "@org/shared-auth": "*",
     "dotenv": "^16.4.7"
   }
 }

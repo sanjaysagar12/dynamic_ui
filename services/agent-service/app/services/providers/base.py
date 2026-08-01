@@ -1,2 +1,0 @@
-class ArtifactGenerationError(Exception):
-    pass

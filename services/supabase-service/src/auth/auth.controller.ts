@@ -1,57 +1,49 @@
-import { Router, type NextFunction, type Response } from 'express';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { AuthService } from './auth.service.js';
 import { requireSupabaseAuth, getSupabaseAuth } from './require-supabase-auth.js';
 import { SupabaseNotConfiguredError, SupabaseRequestError } from '../core/errors.js';
 
-export function createAuthController(authService: AuthService): Router {
-  const router = Router();
-
-  router.post('/signup', async (req, res, next) => {
+export function registerAuthRoutes(fastify: FastifyInstance, authService: AuthService): void {
+  fastify.post('/signup', async (request, reply) => {
+    const { email, password } = (request.body ?? {}) as Record<string, unknown>;
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return reply.code(400).send({ error: 'email and password are required' });
+    }
     try {
-      const { email, password } = req.body ?? {};
-      if (typeof email !== 'string' || typeof password !== 'string') {
-        res.status(400).json({ error: 'email and password are required' });
-        return;
-      }
-      res.json(await authService.signUp(email, password));
+      return await authService.signUp(email, password);
     } catch (err) {
-      handleAuthError(err, res, next);
+      return handleAuthError(err, reply);
     }
   });
 
-  router.post('/login', async (req, res, next) => {
+  fastify.post('/login', async (request, reply) => {
+    const { email, password } = (request.body ?? {}) as Record<string, unknown>;
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      return reply.code(400).send({ error: 'email and password are required' });
+    }
     try {
-      const { email, password } = req.body ?? {};
-      if (typeof email !== 'string' || typeof password !== 'string') {
-        res.status(400).json({ error: 'email and password are required' });
-        return;
-      }
-      res.json(await authService.signIn(email, password));
+      return await authService.signIn(email, password);
     } catch (err) {
-      handleAuthError(err, res, next);
+      return handleAuthError(err, reply);
     }
   });
 
-  router.post('/verify', requireSupabaseAuth, async (req, res, next) => {
+  fastify.post('/verify', { preHandler: requireSupabaseAuth }, async (request, reply) => {
+    const { accessToken } = getSupabaseAuth(request);
     try {
-      const { accessToken } = getSupabaseAuth(req);
-      res.json(await authService.verify(accessToken));
+      return await authService.verify(accessToken);
     } catch (err) {
-      handleAuthError(err, res, next);
+      return handleAuthError(err, reply);
     }
   });
-
-  return router;
 }
 
-function handleAuthError(err: unknown, res: Response, next: NextFunction): void {
+function handleAuthError(err: unknown, reply: FastifyReply) {
   if (err instanceof SupabaseNotConfiguredError) {
-    res.status(503).json({ error: err.message });
-    return;
+    return reply.code(503).send({ error: err.message });
   }
   if (err instanceof SupabaseRequestError) {
-    res.status(err.status).json({ error: err.message });
-    return;
+    return reply.code(err.status).send({ error: err.message });
   }
-  next(err);
+  throw err;
 }

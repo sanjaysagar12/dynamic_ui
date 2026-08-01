@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AgentServiceError, deleteSkillOnAgent, updateSkillOnAgent } from '../../../../lib/api/agent-service-client';
+import { AgentServiceError, deleteSkillOnAgent, updateSkillOnAgent } from '../../../../lib/api/artifact-agent-service-client';
 import type { UpdateSkillPayload } from '../../../../lib/skills/types';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ name: string }> }) {

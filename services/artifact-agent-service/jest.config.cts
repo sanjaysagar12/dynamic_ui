@@ -1,5 +1,5 @@
 module.exports = {
-  displayName: 'agent-service',
+  displayName: 'artifact-agent-service',
   preset: '../../jest.preset.js',
   testEnvironment: 'node',
   transform: {

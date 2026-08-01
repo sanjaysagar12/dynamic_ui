@@ -6,7 +6,7 @@ import { ROLES } from '@org/shared-auth';
 import { useSupabaseSession } from '../../lib/supabase/supabase-session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../../hooks/useArtifactSrc';
-import { fetchProviders, sendChatMessage, ChatRequestError } from '../../lib/api/chat-client';
+import { fetchProviders, sendChatMessage, ChatRequestError } from '../../lib/api/artifact-chat-client';
 import { fetchSkills } from '../../lib/api/skills-client';
 import type { ChatMessage, Provider, ProviderInfo } from '../../lib/chat/types';
 import type { ArtifactCatalogEntry } from '../../lib/artifacts/types';
@@ -137,6 +137,9 @@ export function ChatPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Link href="/" style={{ fontSize: '0.85rem', color: theme.color.textMuted, textDecoration: 'none' }}>
               ← Viewer
+            </Link>
+            <Link href="/db-chat" style={{ fontSize: '0.85rem', color: theme.color.primary, textDecoration: 'none' }}>
+              Database Chat →
             </Link>
             <div style={{ display: 'flex', gap: '0.4rem' }}>
               <button type="button" onClick={() => setSkillsPanelOpen((v) => !v)} style={secondaryButtonStyle}>

@@ -1,5 +1,5 @@
 import 'server-only';
-import { getAgentServiceUrl } from '../config/env';
+import { getArtifactAgentServiceUrl } from '../config/env';
 import type { ChatRequestPayload, ChatResponsePayload, ProvidersResponsePayload } from '../chat/types';
 import type { CreateSkillPayload, ListSkillsResponsePayload, Skill, UpdateSkillPayload } from '../skills/types';
 
@@ -21,7 +21,7 @@ async function parseErrorDetail(response: Response): Promise<string> {
  *  aborted client-side before agent-service's own (longer) OPENCODE_TIMEOUT_SECONDS budget is up,
  *  surfacing as a generic network error even though the request was about to succeed. */
 export async function chatWithAgent(payload: ChatRequestPayload): Promise<ChatResponsePayload> {
-  const response = await fetch(new URL('/agent/chat', getAgentServiceUrl()), {
+  const response = await fetch(new URL('/agent/chat-artifact', getArtifactAgentServiceUrl()), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -37,7 +37,7 @@ export async function chatWithAgent(payload: ChatRequestPayload): Promise<ChatRe
 }
 
 export async function listAgentProviders(): Promise<ProvidersResponsePayload> {
-  const response = await fetch(new URL('/agent/providers', getAgentServiceUrl()), { cache: 'no-store' });
+  const response = await fetch(new URL('/agent/providers', getArtifactAgentServiceUrl()), { cache: 'no-store' });
 
   if (!response.ok) {
     throw new AgentServiceError(await parseErrorDetail(response), response.status);
@@ -47,7 +47,7 @@ export async function listAgentProviders(): Promise<ProvidersResponsePayload> {
 }
 
 export async function listSkillsFromAgent(): Promise<ListSkillsResponsePayload> {
-  const response = await fetch(new URL('/agent/skills', getAgentServiceUrl()), { cache: 'no-store' });
+  const response = await fetch(new URL('/agent/skills', getArtifactAgentServiceUrl()), { cache: 'no-store' });
 
   if (!response.ok) {
     throw new AgentServiceError(await parseErrorDetail(response), response.status);
@@ -57,7 +57,7 @@ export async function listSkillsFromAgent(): Promise<ListSkillsResponsePayload> 
 }
 
 export async function createSkillOnAgent(payload: CreateSkillPayload): Promise<Skill> {
-  const response = await fetch(new URL('/agent/skills', getAgentServiceUrl()), {
+  const response = await fetch(new URL('/agent/skills', getArtifactAgentServiceUrl()), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -72,7 +72,7 @@ export async function createSkillOnAgent(payload: CreateSkillPayload): Promise<S
 }
 
 export async function updateSkillOnAgent(name: string, payload: UpdateSkillPayload): Promise<Skill> {
-  const response = await fetch(new URL(`/agent/skills/${encodeURIComponent(name)}`, getAgentServiceUrl()), {
+  const response = await fetch(new URL(`/agent/skills/${encodeURIComponent(name)}`, getArtifactAgentServiceUrl()), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -87,7 +87,7 @@ export async function updateSkillOnAgent(name: string, payload: UpdateSkillPaylo
 }
 
 export async function deleteSkillOnAgent(name: string): Promise<void> {
-  const response = await fetch(new URL(`/agent/skills/${encodeURIComponent(name)}`, getAgentServiceUrl()), {
+  const response = await fetch(new URL(`/agent/skills/${encodeURIComponent(name)}`, getArtifactAgentServiceUrl()), {
     method: 'DELETE',
     cache: 'no-store',
   });

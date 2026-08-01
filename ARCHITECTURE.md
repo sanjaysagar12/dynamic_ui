@@ -1,21 +1,28 @@
 # Dynamic UI — Architecture Overview
 
-This Nx workspace implements an **Artifacts platform**: a static-file server that serves role-gated "artifacts" (self-contained HTML/CSS/JS bundles) similarly to Apache, a Supabase middle layer that holds the only database credentials in the system and is also the sole authority on "who is this caller and what role do they have", an AI agent that drives [opencode](https://opencode.ai) to generate and update artifacts (and their reusable Skills) from a chat prompt, and a Next.js viewer that renders artifacts in a sandboxed iframe and mediates their data access over `postMessage`.
+This Nx workspace implements an **Artifacts platform**: a static-file server that serves role-gated "artifacts" (self-contained HTML/CSS/JS bundles) similarly to Apache, a Supabase middle layer that holds the only database credentials in the system and is also the sole authority on "who is this caller and what role do they have", an artifact agent that drives [opencode](https://opencode.ai) to generate and update artifacts (and their reusable Skills) from a chat prompt, a database agent that answers natural-language questions about the data itself — strictly scoped to the caller's own Supabase permissions via Row-Level Security — and a Next.js viewer that renders artifacts in a sandboxed iframe, mediates their data access over `postMessage`, and hosts both chat experiences.
 
 Identity is real Supabase Auth throughout — there is no dev-JWT stand-in service anymore. A user logs in once with Supabase; every other service that needs to know who they are (and what role they have) asks `supabase-service`, never decodes anything itself.
 
 ```
 apps/
-  artifacts-viewer/     Next.js app — AI chat page, sandboxed iframe viewer + postMessage data bridge (port 4200)
+  artifacts-viewer/     Next.js app — Artifact Chat + Database Chat pages, sandboxed iframe viewer + postMessage
+                          data bridge (port 4200)
 services/
   artifacts-server/     Fastify app — serves artifacts, verifies the caller via supabase-service + a locked-down CSP (port 3000)
                           artifacts/.opencode/tool/get_schema.ts, artifacts/.opencode/skills/*/SKILL.md, and
                           artifacts/AGENTS.md — opencode's project-local schema tool, reusable Skills, and
                           artifact-authoring instructions, shared by every artifact directory underneath
   supabase-service/      Fastify app — anon-key-only middle layer between the parent app and Supabase; also the
-                          only place that turns a Supabase access token into a verified identity + role (port 3335)
-  agent-service/         TypeScript/Fastify app — turns a chat prompt into an artifact by shelling out to opencode,
-                          and owns CRUD for opencode Skills (port 5002)
+                          only place that turns a Supabase access token into a verified identity + role (port 3335).
+                          Every other service that needs to read Supabase data on a user's behalf — including
+                          db-agent-service below — goes through this one, never a Supabase client of its own.
+  artifact-agent-service/ TypeScript/Fastify app — turns a chat prompt into an artifact by shelling out to opencode,
+                          and owns CRUD for opencode Skills (port 5002); endpoint: POST /agent/chat-artifact
+  db-agent-service/      TypeScript/Fastify app — answers natural-language questions about the data and can
+                          create/update/delete rows (only after explaining the change and getting the user's
+                          go-ahead), all through supabase-service under the caller's own Supabase JWT, so RLS —
+                          not this service — decides what's actually allowed (port 5003); endpoint: POST /agent/chat-db
 packages/
   shared-auth/           Shared TypeScript library — the Role type and the canonical list of valid roles
 ```
@@ -126,15 +133,15 @@ Note the `users` table keys directly on the Supabase auth user id (`id` itself, 
 
 ---
 
-## 4. `services/agent-service` (port 5002, TypeScript/Fastify)
+## 4. `services/artifact-agent-service` (port 5002, TypeScript/Fastify)
 
 Takes a natural-language chat prompt and drives [opencode](https://opencode.ai) — run as a subprocess, one invocation per chat turn — to generate or edit the artifact's files directly on disk. There is no intermediate "write artifact" service: opencode has real `read`/`write`/`edit` tools and operates straight against `services/artifacts-server/artifacts/<slug>/`, the same directory `artifacts-server` serves from. This service also owns CRUD for opencode Skills.
 
 **Endpoints:**
 ```
 GET    /agent/providers                          → { default, providers: [{id, label, model}] } — for populating a model picker
-POST   /agent/generate-artifact  { prompt, slug?, roles?, provider?, model? }  → one-shot create (thin wrapper around /chat)
-POST   /agent/chat  { messages, slug?, roles?, provider?, model? }             → multi-turn create/update, returns updated message history
+POST   /agent/generate-artifact  { prompt, slug?, roles?, provider?, model? }  → one-shot create (thin wrapper around /chat-artifact)
+POST   /agent/chat-artifact  { messages, slug?, roles?, provider?, model? }    → multi-turn create/update, returns updated message history
 GET    /agent/skills                             → { skills: [{name, description, content}] }
 GET    /agent/skills/{name}                       → one skill, 404 if missing
 POST   /agent/skills  { name, description, content }  → create, 201; 409 if the name exists; 400 if invalid
@@ -151,9 +158,9 @@ GET    /health
 5. Enumerate whatever files actually changed on disk (excluding `manifest.json`) to report `files_written` — no separate service call needed since this process already has the artifacts-root filesystem.
 
 opencode itself gets its capabilities from files under `services/artifacts-server/artifacts/`, discovered automatically by walking up from the artifact's own directory (this is opencode's own built-in behavior, not something this service implements):
-- **`AGENTS.md`** — the three-file artifact shape (`index.html`, `assets/style.css`, `assets/app.js`), no `<form>`/`type="submit"` (sandboxed without `allow-forms`), no external libraries/CDNs, Tailwind usage (link `../_shared/tailwind.min.css` before `assets/style.css`), the exact `postMessage` data-bridge wire protocol artifacts must use for persisted data (mirrors `useArtifactDataBridge.ts`, §5), and an instruction to never touch `manifest.json`. Always in context, every turn.
+- **`AGENTS.md`** — the three-file artifact shape (`index.html`, `assets/style.css`, `assets/app.js`), no `<form>`/`type="submit"` (sandboxed without `allow-forms`), no external libraries/CDNs, Tailwind usage (link `../_shared/tailwind.min.css` before `assets/style.css`), the exact `postMessage` data-bridge wire protocol artifacts must use for persisted data (mirrors `useArtifactDataBridge.ts`, §6), and an instruction to never touch `manifest.json`. Always in context, every turn.
 - **`.opencode/tool/get_schema.ts`** — a custom opencode tool that calls Supabase's `GET /rest/v1/` with `Accept: application/openapi+json` **using the secret key**, reporting real table/column names, nullability, enum-typed columns' exact allowed values (PostgREST includes these inline in the OpenAPI document — no extra RPC needed), and — via a `get_table_constraints` SECURITY DEFINER RPC (`services/supabase-service/sql/003_create_table_constraints_rpc.sql`) — primary/foreign/unique/CHECK constraints. Invoked as a tool call, on demand, not always in context.
-- **`.opencode/skills/*/SKILL.md`** — reusable, named procedures (e.g. "our house style for a CRUD form", "how to detect the current user's role correctly"), each with a `name` + `description` frontmatter and a markdown body. Every skill's `name`+`description` is always in context (cheap — just a menu of what's available); a skill's full body is only loaded when opencode actually decides to use it, via its built-in `skill` tool call. The chat UI can name a skill explicitly in the message text to make that decision reliable rather than left to the model's own judgment (see `ChatPage.tsx`, §5) — but opencode can and does pick a relevant skill up from wording alone too. Managed via the `/agent/skills` endpoints above, which write/read/delete `SKILL.md` files directly (`src/services/skill-service.ts`) — no YAML dependency, since the format is just two string fields in a small hand-rolled frontmatter parser.
+- **`.opencode/skills/*/SKILL.md`** — reusable, named procedures (e.g. "our house style for a CRUD form", "how to detect the current user's role correctly"), each with a `name` + `description` frontmatter and a markdown body. Every skill's `name`+`description` is always in context (cheap — just a menu of what's available); a skill's full body is only loaded when opencode actually decides to use it, via its built-in `skill` tool call. The chat UI can name a skill explicitly in the message text to make that decision reliable rather than left to the model's own judgment (see `ChatPage.tsx`, §6) — but opencode can and does pick a relevant skill up from wording alone too. Managed via the `/agent/skills` endpoints above, which write/read/delete `SKILL.md` files directly (`src/services/skill-service.ts`) — no YAML dependency, since the format is just two string fields in a small hand-rolled frontmatter parser.
 
 **Config** (`src/config.ts`): `PORT` (default `5002`), `ARTIFACTS_SERVER_URL`, `ARTIFACTS_ROOT` (default `../artifacts-server/artifacts`), `OPENCODE_BIN` (default `opencode`, resolved via `PATH`), `OPENCODE_TIMEOUT_SECONDS` (default `900`), `LLM_PROVIDER`/`ANTHROPIC_MODEL`/`GEMINI_MODEL` (default model choices), plus `SUPABASE_URL`/`SUPABASE_SECRET_KEY` — needed here (not in a separate service) because the opencode subprocess inherits this process's environment, and that's what its `get_schema` tool reads.
 
@@ -161,9 +168,35 @@ opencode itself gets its capabilities from files under `services/artifacts-serve
 
 ---
 
-## 5. `apps/artifacts-viewer` (port 4200)
+## 5. `services/db-agent-service` (port 5003, TypeScript/Fastify)
 
-A Next.js (App Router) app. There's no role picker anywhere — a user logs in with real Supabase credentials, and their role is whatever `supabase-service` reports for their account. The artifact list, the sidebar, and the chat page all just reflect that.
+Answers natural-language questions about the data itself — "how many open jobs are due this week?", "what's the stock balance on material X?" — instead of generating UI. Deliberately kept separate from `artifact-agent-service`: it holds no opencode subprocess, no artifacts-root filesystem access, and no Supabase key of any kind, so there's no shared state between the two agents that could leak a JWT or let one bypass the other's boundaries.
+
+**Endpoint:**
+```
+POST /agent/chat-db  { messages, jwt, model? }  → { reply, messages } — jwt is the caller's own Supabase access token
+GET  /health
+```
+
+**How a chat turn works** (`src/services/db-chat-service.ts`):
+1. The full message history is sent to Claude (`@anthropic-ai/sdk`, called directly — no opencode involved) along with a system prompt describing the known schema (`src/services/schema-context.ts` — this service is never given a secret key, so unlike opencode's `get_schema` tool it can't introspect the schema live) and two tools: `query_table` (read: table name + optional column filters/order/limit) and `write_table` (create/update/delete a single row).
+2. Every tool call is forwarded to `services/supabase-service`'s `/data/:table` endpoints (`src/services/supabase-query-client.ts`, `GET`/`POST`/`PATCH`/`DELETE`) with the caller's own JWT as the `Authorization` header — **not** a service-role key. This is the same "dedicated Supabase service" every other part of the system already uses for user-scoped data access (§3); `db-agent-service` doesn't roll its own Supabase client, it's just another caller of `supabase-service`. Row-Level Security on the Postgres side, not this agent's own judgment, decides what's actually allowed to come back or be written.
+3. The loop runs for up to `DB_AGENT_MAX_TOOL_ITERATIONS` (default 6) rounds of tool calls; the final round is made with no tool offered at all, forcing a plain-text answer instead of another query.
+4. The assistant's final text becomes the `reply`, appended to the outward message history and returned — no server-side session state is kept between turns (unlike `artifact-agent-service`'s opencode sessions), since each turn just resends the full transcript.
+
+**Writes require the user's explicit confirmation, in plain conversation, before they happen.** The system prompt instructs the model: before any create/update/delete, reply in plain text describing exactly what it's about to do (table, operation, which row, field values) and wait — it must not call `write_table` in that same turn. Only after the user's own later message clearly confirms that specific action may it call `write_table` again with `confirmed: true`; the tool itself refuses the call otherwise (`runWriteTable` in `db-chat-service.ts` checks `confirmed === true` before touching `supabase-service` at all), so a model that "forgets" to ask is blocked at the tool boundary, not just by prompt discipline. Confirmation is a workflow/UX gate, not a security boundary — RLS is still what actually decides whether a write is allowed; a confirmed write a caller isn't permitted to make is still rejected by Postgres.
+
+**RLS-empty vs. real errors** (`src/core/errors.ts`, `src/services/supabase-query-client.ts`): a `200` with an empty array from `supabase-service` — whether because no rows exist or because RLS filtered every row out for this caller — is treated as an ordinary, successful "no data" result and fed back to the model as such; the system prompt explicitly forbids the model from speculating about *why* a result was empty, so it can't leak that restricted rows exist. A non-2xx response from `supabase-service` (bad table name, upstream failure, a write RLS rejects) is a distinct `SupabaseQueryError`, surfaced to the model as a tool error so it reports a problem instead of silently claiming success or "no data". A `401` is treated differently again — `SupabaseAuthError` aborts the whole turn and the route returns `401`, since an invalid/expired session is a caller-facing auth failure, not something the conversation should try to route around.
+
+**Config** (`src/config.ts`): `PORT` (default `5003`), `SUPABASE_SERVICE_URL` (default `http://localhost:3335`), `ANTHROPIC_API_KEY` (the only credential this service holds — authenticates it to Anthropic, never to Supabase), `DB_AGENT_MODEL` (default `claude-opus-4-8`), `DB_AGENT_MAX_TOOL_ITERATIONS` (default `6`).
+
+**Note on `src/services/schema-context.ts`:** `packages/sql/01_create_tables.sql` describes a much larger aspirational ERP schema that turned out **not** to be what's actually deployed on this project's live Supabase instance — the real schema is much smaller (`users`, `categories`, `products`, `stock_transactions`). The schema context was hand-corrected against a live introspection of the actual project (the same OpenAPI document `get_schema.ts` reads) after this mismatch caused every query the agent tried against the aspirational table names to fail with "table not found in the schema cache," surfacing to users as a generic "I ran into a problem" reply. Since this service has no secret key and can't introspect the schema itself at request time, keeping `schema-context.ts` in sync with whatever's actually live is a manual step — re-check it against reality (or against `get_schema.ts`'s output) if table/column errors start showing up again.
+
+---
+
+## 6. `apps/artifacts-viewer` (port 4200)
+
+A Next.js (App Router) app. There's no role picker anywhere — a user logs in with real Supabase credentials, and their role is whatever `supabase-service` reports for their account. The artifact list, the sidebar, and both chat pages all just reflect that.
 
 **Artifact rendering flow:**
 1. The user logs in via `SupabaseSessionWidget.tsx` (`POST /api/supabase/login`, a BFF route to `supabase-service`'s `/auth/login`). The resulting `{ accessToken, userId, email }` is held in React state (`supabase-session-context.tsx`), never in `localStorage`/cookies.
@@ -178,13 +211,13 @@ A Next.js (App Router) app. There's no role picker anywhere — a user logs in w
 4. The result is posted back to the iframe as `{ source: 'artifact-data-bridge', type: 'response', requestId, status, body }`.
 
 **Modules:**
-- `lib/config/env.ts` — `getArtifactsServerUrl()` (public — the browser needs it to build the iframe `src`), `getAgentServiceUrl()`, `getSupabaseServiceUrl()` (server-only)
-- `lib/api/supabase-service-client.ts`, `lib/api/agent-service-client.ts`, `lib/api/artifacts-catalog-client.ts` — server-only (`import 'server-only'`) clients for each backend; `lib/api/catalog-client.ts`, `chat-client.ts`, `skills-client.ts` — matching browser-side clients that call this app's own BFF routes
-- `app/api/supabase/{login,signup}/route.ts`, `app/api/data/[table]/{route.ts,[id]/route.ts}`, `app/api/artifacts/route.ts`, `app/api/chat/{route.ts,providers/route.ts}`, `app/api/skills/{route.ts,[name]/route.ts}` — the BFF routes bridging browser ↔ each backend (there is no `/api/token` route anymore)
+- `lib/config/env.ts` — `getArtifactsServerUrl()` (public — the browser needs it to build the iframe `src`), `getArtifactAgentServiceUrl()`, `getDbAgentServiceUrl()`, `getSupabaseServiceUrl()` (server-only)
+- `lib/api/supabase-service-client.ts`, `lib/api/artifact-agent-service-client.ts`, `lib/api/db-agent-service-client.ts`, `lib/api/artifacts-catalog-client.ts` — server-only (`import 'server-only'`) clients for each backend; `lib/api/catalog-client.ts`, `artifact-chat-client.ts`, `db-chat-client.ts`, `skills-client.ts` — matching browser-side clients that call this app's own BFF routes
+- `app/api/supabase/{login,signup}/route.ts`, `app/api/data/[table]/{route.ts,[id]/route.ts}`, `app/api/artifacts/route.ts`, `app/api/chat-artifact/{route.ts,providers/route.ts}`, `app/api/chat-db/route.ts`, `app/api/skills/{route.ts,[name]/route.ts}` — the BFF routes bridging browser ↔ each backend (there is no `/api/token` route anymore)
 - `lib/supabase/supabase-session-context.tsx` — React context holding the Supabase session, plus `login`/`signUp`/`logout`
 - `hooks/useArtifactDataBridge.ts` — the postMessage mediator described above
 - `hooks/useArtifactCatalog.ts`, `hooks/useArtifactSrc.ts` — fetches the role-scoped catalog and builds the iframe `src`, both keyed on the Supabase access token directly
-- `components/ArtifactSelector.tsx` (a sidebar list of pages, not a dropdown), `ArtifactFrame.tsx` (accepts a `reloadNonce` prop to force a remount/reload independent of `src`), `ArtifactViewer.tsx`, `components/supabase/ProfileMenu.tsx` + `SupabaseSessionWidget.tsx` (email/role/logout, opens as a popup from a profile chip — no `RoleSwitcher`, roles are never user-selectable) — composed in `app/page.tsx`
+- `components/ArtifactSelector.tsx` (a sidebar list of pages, not a dropdown), `ArtifactFrame.tsx` (accepts a `reloadNonce` prop to force a remount/reload independent of `src`), `ArtifactViewer.tsx` (its sidebar links to both `/chat` and `/db-chat`), `components/supabase/ProfileMenu.tsx` + `SupabaseSessionWidget.tsx` (email/role/logout, opens as a popup from a profile chip — no `RoleSwitcher`, roles are never user-selectable) — composed in `app/page.tsx`
 
 **Iframe sandboxing** (`ArtifactFrame.tsx`) — artifacts are treated as untrusted, potentially AI-generated (and thus potentially adversarial) content:
 - `sandbox="allow-scripts"` **only** — no `allow-same-origin` (the framed document gets a unique opaque origin, so it can't read this app's — or even its own origin's — cookies/storage), no forms, popups, top-navigation, downloads, or modals.
@@ -193,7 +226,7 @@ A Next.js (App Router) app. There's no role picker anywhere — a user logs in w
 - The iframe is keyed by `src` plus a `reloadNonce` counter, so switching artifact — or an explicit "⟳ Refresh" click, or a new chat response landing — fully remounts it rather than reusing stale state, even when the URL string itself hasn't changed.
 - `artifacts-server` additionally sends `Content-Security-Policy: connect-src 'none'` on every artifact document, so even outbound network calls the sandbox attribute itself doesn't restrict are blocked at the browser level.
 
-### AI chat page (`/chat`)
+### Artifact Chat page (`/chat`)
 
 Lets a user create or update an artifact by chatting instead of hand-writing HTML, and manage opencode Skills without leaving the page.
 
@@ -203,7 +236,18 @@ Lets a user create or update an artifact by chatting instead of hand-writing HTM
 - `components/chat/SkillsPanel.tsx` — inline create/edit/delete UI for skills, calling `/api/skills`; toggled in place of `ExistingArtifactsPanel` by a header button
 - `lib/chat/types.ts`, `lib/skills/types.ts` — the wire types shared between the proxies and the UI
 
-**Flow:** composer submits → if any skills are selected, the message is rewritten to `Use these skills: "a", "b". <original text>` (visible in the transcript — no hidden text) → optimistic user message appended → `POST /api/chat` with the full message list, the current `slug` (`null` on the first turn), and the selected provider → `agent-service` returns the assistant's reply plus the artifact's `url_path` → the page adopts the returned `slug`/`url_path` so the *next* message updates the same artifact instead of creating a new one, and the preview pane's iframe reloads against it (both automatically, after every response, and on demand via the refresh button).
+**Flow:** composer submits → if any skills are selected, the message is rewritten to `Use these skills: "a", "b". <original text>` (visible in the transcript — no hidden text) → optimistic user message appended → `POST /api/chat-artifact` with the full message list, the current `slug` (`null` on the first turn), and the selected provider → `artifact-agent-service` returns the assistant's reply plus the artifact's `url_path` → the page adopts the returned `slug`/`url_path` so the *next* message updates the same artifact instead of creating a new one, and the preview pane's iframe reloads against it (both automatically, after every response, and on demand via the refresh button).
+
+### Database Chat page (`/db-chat`)
+
+Lets a user ask natural-language questions about the data instead of building or reading an artifact — no preview pane, no skills, no artifact `slug`, just a conversation.
+
+- `app/db-chat/page.tsx` → `components/db-chat/DbChatPage.tsx` — owns the conversation state and renders its own message list/composer inline (simple enough not to warrant splitting into the same sub-components as `ChatPage.tsx`)
+- `lib/db-chat/types.ts` — the wire types shared between the proxy and the UI
+- `lib/api/db-chat-client.ts` — browser-side client; sends `POST /api/chat-db` with the message list, carrying the current Supabase session's access token as an `Authorization: Bearer` header (via `useSupabaseSession()`, the same session object every other Supabase-aware part of this app reads from)
+- `app/api/chat-db/route.ts` — the BFF route: extracts that header with `lib/http/data-request-auth.ts` (the same helper `app/api/data/[table]/route.ts` uses) — `401` if missing — then calls `lib/api/db-agent-service-client.ts`'s `chatWithDbAgent(messages, jwt)`, which `POST`s `{ messages, jwt }` to `db-agent-service`'s `/agent/chat-db`
+
+**Flow:** composer submits → optimistic user message appended → `POST /api/chat-db` with the full message list and the caller's Supabase JWT (never the message body — always the `Authorization` header) → `db-agent-service` runs its `query_table`/`write_table` tool loop against `supabase-service` under that same JWT, so every row it can read or change is exactly what RLS allows this caller to → the assistant's reply is appended to the transcript. When the request implies a create/update/delete, that reply is a plain-language description of the intended change asking for confirmation — the same composer is how the user says "yes, go ahead" on the next turn. There's no artifact, no preview pane, and no cross-turn server-side session — each turn just resends the full message list.
 
 ---
 
@@ -221,6 +265,10 @@ Lets a user create or update an artifact by chatting instead of hand-writing HTM
 | A caller's role can't be forged by decoding/trusting the token client-side | `artifacts-server` never inspects the token itself — it always asks `supabase-service`'s `/auth/verify`, the one place that resolves a token to a role via an RLS-scoped DB read |
 | Schema introspection needs a secret key Supabase requires for that endpoint | Isolated to opencode's own `get_schema` tool — generation-time only, never in any runtime artifact/data request path |
 | AI-generated code doesn't know the real schema | The `get_schema` tool fetches real table/column/constraint/enum names before code is written |
+| The database chat agent could see or change more than the asking user is allowed to | `db-agent-service` holds no Supabase key at all — every read and write goes through `supabase-service`'s `/data/:table` under the caller's own JWT (§5), so RLS decides what's actually allowed, not the agent |
+| The database chat agent could leak that RLS-restricted data exists | An RLS-empty result and a genuinely-empty result are indistinguishable at the SQL level by design; `db-agent-service` treats both identically (`SupabaseQueryClient`, §5) and its system prompt explicitly forbids speculating about *why* a result was empty |
+| The database chat agent could write/delete data without the user realizing | `write_table` refuses to run unless called with `confirmed: true`, and the system prompt requires the model to have already explained the exact change and gotten an explicit go-ahead in a prior turn before setting that flag (§5) — this is a workflow gate, not a security one; RLS is still the actual authority on whether the write is allowed |
+| The two chat agents could leak a JWT or bypass each other's boundaries | No shared state between them — `artifact-agent-service` never receives a Supabase JWT at all, and `db-agent-service` never touches the artifacts filesystem, opencode, or any Supabase key |
 
 `services/artifacts-server/artifacts/sandbox-security-test/` is a live artifact that exercises every row in this table (except the RLS/schema ones, which aren't reachable from an artifact by design) and reports pass/fail for each — open it any time to re-verify the sandbox after changing anything here.
 
@@ -232,4 +280,6 @@ See the top-level [README.md](./README.md) for step-by-step setup and run instru
 
 ## Status
 
-Everything above is implemented, builds, typechecks, and lints. Verified end-to-end live against a real Supabase project: signup/login → `/auth/verify` resolving the real role from the `users` table → role-based 200/403/404 responses from `artifacts-server` → sandboxed rendering; the full agent-service → opencode → artifacts-server chain (both creating a new artifact and editing an existing one across turns, including a confirmed session-continuity bug fix — resending full history on top of a live opencode session confused the model into re-validating the original request instead of applying the newest one); the postMessage data bridge performing real CRUD against Supabase through RLS; `get_schema` returning the real database schema, including enum-typed columns' exact allowed values, via the secret key held only by opencode's tool; a Skill created through `/agent/skills` being genuinely discovered and invoked by opencode mid-generation (confirmed via its tool-call event stream, not just that the file was theoretically visible); the CSP blocking external/internal fetches from inside the sandboxed iframe. Not yet built: an artifact publishing/upload flow beyond the agent, and e2e test suites (removed from this workspace for now).
+Everything through §4/§6's Artifact Chat flow is implemented, builds, typechecks, and lints, and was verified end-to-end live against a real Supabase project: signup/login → `/auth/verify` resolving the real role from the `users` table → role-based 200/403/404 responses from `artifacts-server` → sandboxed rendering; the full `artifact-agent-service` (then `agent-service`) → opencode → artifacts-server chain (both creating a new artifact and editing an existing one across turns, including a confirmed session-continuity bug fix — resending full history on top of a live opencode session confused the model into re-validating the original request instead of applying the newest one); the postMessage data bridge performing real CRUD against Supabase through RLS; `get_schema` returning the real database schema, including enum-typed columns' exact allowed values, via the secret key held only by opencode's tool; a Skill created through `/agent/skills` being genuinely discovered and invoked by opencode mid-generation (confirmed via its tool-call event stream, not just that the file was theoretically visible); the CSP blocking external/internal fetches from inside the sandboxed iframe.
+
+`db-agent-service` (§5) and the Database Chat page (§6) are newer, and have now been verified live against the real Supabase project directly through `/agent/chat-db` (not yet through the Next.js UI itself): a read question resolving real `products` rows through RLS; a create request correctly stopping to explain the exact row it intended to insert and ask for confirmation *before* touching the database; the same create actually executing, and the row appearing in Supabase, only after a follow-up message confirmed it. That first live test also caught a real bug worth recording — `packages/sql/01_create_tables.sql`'s schema doesn't match what's actually deployed, so `schema-context.ts` was originally wrong and every query failed with a generic "I ran into a problem" reply; see the note in §5. Not yet built: an artifact publishing/upload flow beyond the agent, and e2e test suites (removed from this workspace for now).

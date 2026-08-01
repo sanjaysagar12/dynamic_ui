@@ -3,7 +3,7 @@ import type { ChatRequestPayload, ChatResponsePayload, ProvidersResponsePayload 
 export class ChatRequestError extends Error {}
 
 export async function sendChatMessage(payload: ChatRequestPayload): Promise<ChatResponsePayload> {
-  const response = await fetch('/api/chat', {
+  const response = await fetch('/api/chat-artifact', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -18,7 +18,7 @@ export async function sendChatMessage(payload: ChatRequestPayload): Promise<Chat
 }
 
 export async function fetchProviders(): Promise<ProvidersResponsePayload> {
-  const response = await fetch('/api/chat/providers');
+  const response = await fetch('/api/chat-artifact/providers');
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

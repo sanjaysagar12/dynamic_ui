@@ -16,7 +16,10 @@
       "path": "./services/supabase-service"
     },
     {
-      "path": "./services/agent-service"
+      "path": "./services/artifact-agent-service"
+    },
+    {
+      "path": "./services/db-agent-service"
     }
   ],
   "compilerOptions": {

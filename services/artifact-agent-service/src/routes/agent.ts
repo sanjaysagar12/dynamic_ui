@@ -29,7 +29,7 @@ export function registerAgentRoutes(fastify: FastifyInstance, config: AppConfig)
     }
   });
 
-  fastify.post('/agent/chat', async (request, reply) => {
+  fastify.post('/agent/chat-artifact', async (request, reply) => {
     let parsed;
     try {
       parsed = parseChatRequest(request.body);

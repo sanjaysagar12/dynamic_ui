@@ -3,7 +3,7 @@ import { join } from 'path';
 
 const MANIFEST_FILE = 'manifest.json';
 
-// Writes manifest.json directly — agent-service owns the artifacts_root
+// Writes manifest.json directly — artifact-agent-service owns the artifacts_root
 // filesystem the same way opencode does, so this no longer needs to go
 // through a separate service. opencode never touches this file itself (see
 // AGENTS.md); it only writes the content files.

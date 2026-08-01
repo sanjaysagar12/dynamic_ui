@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AgentServiceError, createSkillOnAgent, listSkillsFromAgent } from '../../../lib/api/agent-service-client';
+import { AgentServiceError, createSkillOnAgent, listSkillsFromAgent } from '../../../lib/api/artifact-agent-service-client';
 import type { CreateSkillPayload } from '../../../lib/skills/types';
 
 export async function GET() {

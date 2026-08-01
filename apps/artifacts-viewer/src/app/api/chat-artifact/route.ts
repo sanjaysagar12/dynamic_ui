@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AgentServiceError, chatWithAgent } from '../../../lib/api/agent-service-client';
+import { AgentServiceError, chatWithAgent } from '../../../lib/api/artifact-agent-service-client';
 import type { ChatRequestPayload } from '../../../lib/chat/types';
 
 export async function POST(req: NextRequest) {

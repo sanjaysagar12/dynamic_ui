@@ -37,7 +37,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     // directly from the inherited environment / its own auth store.
 
     // opencode is what actually generates/edits artifact files now; see
-    // services/agent-service/src/services/opencode-runner.ts.
+    // services/artifact-agent-service/src/services/opencode-runner.ts.
     artifactsRoot: resolve(env.ARTIFACTS_ROOT || resolve(serviceRoot, '../artifacts-server/artifacts')),
     opencodeBin: env.OPENCODE_BIN || 'opencode',
     // A complex multi-screen artifact (role-based dashboards, several

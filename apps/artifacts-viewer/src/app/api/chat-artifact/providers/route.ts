@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { AgentServiceError, listAgentProviders } from '../../../../lib/api/agent-service-client';
+import { AgentServiceError, listAgentProviders } from '../../../../lib/api/artifact-agent-service-client';
 
 export async function GET() {
   try {

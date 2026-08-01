@@ -59,9 +59,14 @@ export function ArtifactViewer() {
           )}
         </div>
 
-        <Link href="/chat" style={{ fontSize: '0.9rem', fontWeight: 600, color: theme.color.primary, textDecoration: 'none' }}>
-          AI Chat →
-        </Link>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <Link href="/chat" style={{ fontSize: '0.9rem', fontWeight: 600, color: theme.color.primary, textDecoration: 'none' }}>
+            Artifact Chat →
+          </Link>
+          <Link href="/db-chat" style={{ fontSize: '0.9rem', fontWeight: 600, color: theme.color.primary, textDecoration: 'none' }}>
+            Database Chat →
+          </Link>
+        </nav>
 
         <div style={{ borderTop: `1px solid ${theme.color.border}`, paddingTop: '0.85rem' }}>
           <SupabaseSessionWidget role={role} popupPlacement="above" />

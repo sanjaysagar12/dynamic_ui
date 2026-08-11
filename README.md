@@ -8,11 +8,13 @@ See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for the full design write-up. This 
 
 | Service | Port | Stack | Purpose |
 |---|---|---|---|
-| `artifacts-server` | 3000 | Fastify | Serves artifacts (static files, role-gated by verifying the caller's Supabase token via `supabase-service`) |
+| `artifacts-server` | 3400 | Fastify | Serves artifacts (static files, role-gated by verifying the caller's Supabase token via `supabase-service`) |
 | `supabase-service` | 3335 | Fastify | Anon-key-only middle layer to Supabase; also verifies Supabase access tokens for other services |
-| `artifact-agent-service` | 5002 | Fastify | Drives [opencode](https://opencode.ai) (as a subprocess) to generate/update artifacts via chat |
-| `db-agent-service` | 5003 | Fastify | Answers natural-language database questions via chat, scoped to the caller's Supabase JWT through `supabase-service` (RLS-enforced) |
+| `artifact-agent-service` | 5102 | Fastify | Drives [opencode](https://opencode.ai) (as a subprocess) to generate/update artifacts via chat |
+| `db-agent-service` | 5103 | Fastify | Answers natural-language database questions via chat, scoped to the caller's Supabase JWT through `supabase-service` (RLS-enforced) |
 | `artifacts-viewer` | 4200 | Next.js | The app you open in a browser |
+
+Ports were chosen to avoid the common defaults (`3000`, `5001`–`5003`, `8000`/`8001`, `9001`/`9002`, …) that other unrelated services/containers on a shared host frequently claim. If any of these still collide in your environment, override with the `PORT` env var (or `NEXT_PUBLIC_ARTIFACTS_SERVER_URL`/`ARTIFACT_AGENT_SERVICE_URL`/`DB_AGENT_SERVICE_URL`/`SUPABASE_SERVICE_URL` on the consuming side — see below).
 
 ## Prerequisites
 
@@ -33,7 +35,7 @@ Each service reads its own `.env` file (already `.gitignore`d — never commit r
 
 **`services/artifacts-server/.env`**
 ```
-PORT=3000
+PORT=3400
 SUPABASE_SERVICE_URL=http://localhost:3335
 ```
 
@@ -50,8 +52,8 @@ Get these from your Supabase project's **Settings → API**. This service never 
 LLM_PROVIDER=gemini
 GEMINI_MODEL=gemini-2.5-flash
 ANTHROPIC_MODEL=claude-opus-4-8
-ARTIFACTS_SERVER_URL=http://localhost:3000
-PORT=5002
+ARTIFACTS_SERVER_URL=http://localhost:3400
+PORT=5102
 
 # The get_schema tool opencode uses (services/artifacts-server/artifacts/.opencode/tool/get_schema.ts)
 # needs these to look up your real Supabase schema:
@@ -64,7 +66,7 @@ SUPABASE_SECRET_KEY=<your secret/service-role key>
 
 **`services/db-agent-service/.env`** *(required to use the Database Chat page)*
 ```
-PORT=5003
+PORT=5103
 SUPABASE_SERVICE_URL=http://localhost:3335
 ANTHROPIC_API_KEY=<your Anthropic API key>
 DB_AGENT_MODEL=claude-opus-4-8
@@ -73,6 +75,16 @@ This service holds no Supabase key of its own — every data read it makes goes 
 
 ## Running the services
 
+### All at once (recommended)
+
+```sh
+npm run dev
+```
+
+Runs all five services in parallel in one terminal (via [`concurrently`](https://www.npmjs.com/package/concurrently)), each with its own colored, name-prefixed log output so you can tell them apart at a glance. `Ctrl+C` stops all of them together. This is exactly the set of commands listed individually below — the script just runs them concurrently instead of in separate terminals.
+
+### Individually
+
 Each runs independently — open a terminal per service (or background them), in roughly this order:
 
 ```sh
@@ -80,15 +92,17 @@ Each runs independently — open a terminal per service (or background them), in
 npx nx run supabase-service:serve        # http://localhost:3335
 
 # 2. Artifact serving
-npx nx run artifacts-server:serve        # http://localhost:3000
+npx nx run artifacts-server:serve        # http://localhost:3400
 
 # 3. AI agents (skip either if you don't need it)
-npx nx run artifact-agent-service:serve  # http://localhost:5002 — chat-artifact (opencode)
-npx nx run db-agent-service:serve        # http://localhost:5003 — chat-db (database Q&A)
+npx nx run artifact-agent-service:serve  # http://localhost:5102 — chat-artifact (opencode)
+npx nx run db-agent-service:serve        # http://localhost:5103 — chat-db (database Q&A)
 
 # 4. The app itself
 npx nx run artifacts-viewer:dev          # http://localhost:4200
 ```
+
+Running them individually is mainly useful when you want to restart just one service (see the note on auto-restart below) without taking the others down too.
 
 Then open **http://localhost:4200**:
 - Log in with the Supabase widget (sign up with any email/password — it creates a real Supabase Auth user; your role comes from that user's row in the `users` table, not from anything you pick in the UI).

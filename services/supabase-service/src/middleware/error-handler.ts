@@ -13,8 +13,13 @@ import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
  * querying schema").
  */
 export function errorHandler(err: FastifyError | Error, request: FastifyRequest, reply: FastifyReply): void {
+  // Logged in full (stack trace and all) before anything is sent back to the caller — the
+  // response body below only ever contains the message, never the stack, so this is the only
+  // place that error detail actually ends up visible to whoever's operating the service.
   console.error(`Unhandled error on ${request.method} ${request.url}:`, err);
 
+  // Fastify itself sets .statusCode on some of its own internal errors (e.g. body-parsing
+  // failures) — honor that if present, otherwise this really is an unexpected 500.
   const statusCode = (err as FastifyError).statusCode;
   const status = typeof statusCode === 'number' ? statusCode : 500;
   const message = err instanceof Error ? err.message : 'Unexpected server error';

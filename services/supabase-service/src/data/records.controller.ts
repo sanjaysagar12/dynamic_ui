@@ -12,11 +12,22 @@ interface TableIdParams {
   id: string;
 }
 
+/** Registers GET/POST/PATCH/DELETE /:table[/:id] under the /data prefix (see app.ts) — the
+ *  generic, schema-agnostic CRUD surface every artifact and both chat agents read/write through.
+ *  Every route here requires a Supabase access token (requireSupabaseAuth, applied to the whole
+ *  plugin via addHook below) and just forwards to RecordsService, which is where the actual
+ *  Supabase calls happen. This file's only job is HTTP plumbing: parse params/query/body,
+ *  call the service, map thrown errors to a status code. */
 export function registerRecordsRoutes(fastify: FastifyInstance, recordsService: RecordsService): void {
+  // Applies to every route registered on this Fastify instance below — there is no
+  // unauthenticated route under /data.
   fastify.addHook('preHandler', requireSupabaseAuth);
 
+  // GET /data/:table?col=value&order=col.asc|desc&limit=n — list rows.
   fastify.get<{ Params: TableParams }>('/:table', async (request, reply) => {
     const { accessToken } = getSupabaseAuth(request);
+    // Query-string values can technically be string[] (repeated keys) — only keep the plain
+    // string ones; RecordsService.list() treats every remaining key as an exact-match filter.
     const filters = Object.fromEntries(
       Object.entries(request.query as Record<string, unknown>).filter(
         (entry): entry is [string, string] => typeof entry[1] === 'string',
@@ -29,6 +40,8 @@ export function registerRecordsRoutes(fastify: FastifyInstance, recordsService: 
     }
   });
 
+  // POST /data/:table { ...fields } — create one row, respond 201 with the row itself (bare,
+  // not wrapped in { data: ... } the way the list endpoint is).
   fastify.post<{ Params: TableParams }>('/:table', async (request, reply) => {
     const { accessToken } = getSupabaseAuth(request);
     try {
@@ -43,6 +56,8 @@ export function registerRecordsRoutes(fastify: FastifyInstance, recordsService: 
     }
   });
 
+  // PATCH /data/:table/:id { ...fields } — partial update of one row by id, respond with the
+  // row's new state (also bare).
   fastify.patch<{ Params: TableIdParams }>('/:table/:id', async (request, reply) => {
     const { accessToken } = getSupabaseAuth(request);
     try {
@@ -57,6 +72,7 @@ export function registerRecordsRoutes(fastify: FastifyInstance, recordsService: 
     }
   });
 
+  // DELETE /data/:table/:id — delete one row by id, respond 204 with no body.
   fastify.delete<{ Params: TableIdParams }>('/:table/:id', async (request, reply) => {
     const { accessToken } = getSupabaseAuth(request);
     try {
@@ -68,6 +84,9 @@ export function registerRecordsRoutes(fastify: FastifyInstance, recordsService: 
   });
 }
 
+/** Shared by all four routes above — same pattern as auth.controller.ts's handleAuthError:
+ *  known error types become the right status code, anything else re-throws to the global
+ *  catch-all (middleware/error-handler.ts) so it's logged instead of silently mis-handled. */
 function handleError(err: unknown, reply: FastifyReply) {
   if (err instanceof SupabaseNotConfiguredError) {
     return reply.code(503).send({ error: err.message });

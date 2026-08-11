@@ -14,7 +14,9 @@ See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for the full design write-up. This 
 | `db-agent-service` | 5103 | Fastify | Answers natural-language database questions via chat, scoped to the caller's Supabase JWT through `supabase-service` (RLS-enforced) |
 | `artifacts-viewer` | 4200 | Next.js | The app you open in a browser |
 
-Ports were chosen to avoid the common defaults (`3000`, `5001`–`5003`, `8000`/`8001`, `9001`/`9002`, …) that other unrelated services/containers on a shared host frequently claim. If any of these still collide in your environment, override with the `PORT` env var (or `NEXT_PUBLIC_ARTIFACTS_SERVER_URL`/`ARTIFACT_AGENT_SERVICE_URL`/`DB_AGENT_SERVICE_URL`/`SUPABASE_SERVICE_URL` on the consuming side — see below).
+Ports were chosen to avoid the common defaults (`3000`, `5001`–`5003`, `8000`/`8001`, `9001`/`9002`, …) that other unrelated services/containers on a shared host frequently claim. If any of these still collide in your environment, override with the `PORT` env var (or `ARTIFACTS_SERVER_URL`/`ARTIFACT_AGENT_SERVICE_URL`/`DB_AGENT_SERVICE_URL`/`SUPABASE_SERVICE_URL` on the consuming side — see below).
+
+The browser only ever talks to `artifacts-viewer`'s own origin — `artifacts-server`, both agent services, and `supabase-service` are reached exclusively server-side, from `artifacts-viewer`'s Node process (or from each other). None of them need to be publicly reachable in a real deployment; only `artifacts-viewer` does.
 
 ## Prerequisites
 
@@ -72,6 +74,15 @@ ANTHROPIC_API_KEY=<your Anthropic API key>
 DB_AGENT_MODEL=claude-opus-4-8
 ```
 This service holds no Supabase key of its own — every data read it makes goes through `supabase-service`'s `/data/:table`, carrying the caller's own Supabase access token (passed in on each `/agent/chat-db` request) as the `Authorization` header. That's what keeps Row-Level Security enforced per-user instead of this agent seeing everything.
+
+**`apps/artifacts-viewer/.env.local`** *(optional — only needed if a backend service isn't on its default `localhost` port, e.g. in a real deployment)*
+```
+ARTIFACTS_SERVER_URL=http://localhost:3400
+ARTIFACT_AGENT_SERVICE_URL=http://localhost:5102
+DB_AGENT_SERVICE_URL=http://localhost:5103
+SUPABASE_SERVICE_URL=http://localhost:3335
+```
+All four are read server-side only (Next.js `.env.local`, not committed) — the browser never sees any of these URLs. Every request the browser makes goes to `artifacts-viewer`'s own origin (`/api/...`), which forwards to the right backend service from Node. That's what lets `artifacts-server`/`artifact-agent-service`/`db-agent-service`/`supabase-service` stay private/internal-only in deployment: only `artifacts-viewer` needs to be publicly reachable.
 
 ## Running the services
 

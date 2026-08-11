@@ -1,8 +1,12 @@
-/** Public: base URL of the Artifacts Server, used by the browser to load the iframe directly.
+/** Server-only: base URL of the Artifacts Server. The browser never talks to it directly —
+ *  the iframe `src` points at this app's own `/api/artifact-proxy/*` route instead (see
+ *  lib/artifacts/artifact-url.ts and app/api/artifact-proxy/[...path]/route.ts), which fetches
+ *  from here server-side. That keeps artifacts-server reachable only from this process, not
+ *  from the public internet, in a deployment where only artifacts-viewer is exposed.
  *  Default port is 3400, not 3000 — chosen to avoid colliding with other services/containers
  *  that commonly claim 3000 on a shared host. */
 export function getArtifactsServerUrl(): string {
-  return process.env.NEXT_PUBLIC_ARTIFACTS_SERVER_URL || 'http://localhost:3400';
+  return process.env.ARTIFACTS_SERVER_URL || 'http://localhost:3400';
 }
 
 /** Server-only: base URL of the Artifact Agent Service, which generates and updates artifacts via chat. */

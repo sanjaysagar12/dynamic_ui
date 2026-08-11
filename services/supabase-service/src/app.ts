@@ -1,26 +1,36 @@
-import express = require('express');
-import type { Express } from 'express';
+import Fastify, { type FastifyInstance } from 'fastify';
 import type { AppConfig } from './config.js';
 import { SupabaseClientFactory } from './supabase/supabase-client-factory.js';
 import { AuthService } from './auth/auth.service.js';
-import { createAuthController } from './auth/auth.controller.js';
+import { registerAuthRoutes } from './auth/auth.controller.js';
 import { RecordsService } from './data/records.service.js';
-import { createRecordsController } from './data/records.controller.js';
+import { registerRecordsRoutes } from './data/records.controller.js';
+import { errorHandler } from './middleware/error-handler.js';
 
-export function createApp(config: AppConfig): Express {
-  const app = express();
-  app.use(express.json());
+export function createApp(config: AppConfig): FastifyInstance {
+  const fastify = Fastify();
 
   const clientFactory = new SupabaseClientFactory(config);
   const authService = new AuthService(clientFactory);
   const recordsService = new RecordsService(clientFactory);
 
-  app.get('/health', (_req, res) => {
-    res.json({ status: 'ok' });
-  });
+  fastify.get('/health', async () => ({ status: 'ok' }));
 
-  app.use('/auth', createAuthController(authService));
-  app.use('/data', createRecordsController(recordsService));
+  fastify.register(
+    async (instance) => {
+      registerAuthRoutes(instance, authService);
+    },
+    { prefix: '/auth' },
+  );
 
-  return app;
+  fastify.register(
+    async (instance) => {
+      registerRecordsRoutes(instance, recordsService);
+    },
+    { prefix: '/data' },
+  );
+
+  fastify.setErrorHandler(errorHandler);
+
+  return fastify;
 }

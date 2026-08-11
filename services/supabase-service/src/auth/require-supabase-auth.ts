@@ -1,12 +1,12 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 export interface SupabaseAuthContext {
   accessToken: string;
   userId?: string;
 }
 
-declare module 'express-serve-static-core' {
-  interface Request {
+declare module 'fastify' {
+  interface FastifyRequest {
     supabaseAuth?: SupabaseAuthContext;
   }
 }
@@ -17,26 +17,26 @@ declare module 'express-serve-static-core' {
  * only thing that's actually required; X-User-Id is optional passthrough
  * metadata some callers use for their own filtering.
  */
-export function requireSupabaseAuth(req: Request, res: Response, next: NextFunction): void {
-  const header = req.headers.authorization;
+export function requireSupabaseAuth(request: FastifyRequest, reply: FastifyReply, done: (err?: Error) => void): void {
+  const header = request.headers.authorization;
 
   if (!header?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Authorization: Bearer <supabase access token> header is required' });
+    reply.code(401).send({ error: 'Authorization: Bearer <supabase access token> header is required' });
     return;
   }
 
-  const userId = req.headers['x-user-id'];
-  req.supabaseAuth = {
+  const userId = request.headers['x-user-id'];
+  request.supabaseAuth = {
     accessToken: header.slice('Bearer '.length).trim(),
     userId: typeof userId === 'string' && userId.length > 0 ? userId : undefined,
   };
-  next();
+  done();
 }
 
-/** Reads the context attached by requireSupabaseAuth. Only call this on routes behind that middleware. */
-export function getSupabaseAuth(req: Request): SupabaseAuthContext {
-  if (!req.supabaseAuth) {
+/** Reads the context attached by requireSupabaseAuth. Only call this on routes behind that preHandler. */
+export function getSupabaseAuth(request: FastifyRequest): SupabaseAuthContext {
+  if (!request.supabaseAuth) {
     throw new Error('getSupabaseAuth() called on a route without requireSupabaseAuth');
   }
-  return req.supabaseAuth;
+  return request.supabaseAuth;
 }

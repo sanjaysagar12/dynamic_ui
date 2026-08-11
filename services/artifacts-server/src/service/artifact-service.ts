@@ -1,4 +1,4 @@
-import type { Request } from 'express';
+import type { FastifyRequest } from 'fastify';
 import type { ArtifactPathResolver, ResolvedArtifactRequest } from '../resolution/artifact-path-resolver.js';
 import type { ManifestRepository } from '../manifest/manifest-repository.js';
 import type { AuthenticationProvider } from '../auth/authentication-provider.js';
@@ -18,7 +18,7 @@ export class ArtifactService {
     private readonly authorizationStrategy: AuthorizationStrategy,
   ) {}
 
-  async handleRequest(req: Request, requestPath: string): Promise<ArtifactServingResult> {
+  async handleRequest(req: FastifyRequest, requestPath: string): Promise<ArtifactServingResult> {
     const resolved = await this.pathResolver.resolve(requestPath);
 
     if (resolved.requiresTrailingSlashRedirect) {

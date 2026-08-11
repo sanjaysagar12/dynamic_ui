@@ -1,4 +1,4 @@
-import type { Request } from 'express';
+import type { FastifyRequest } from 'fastify';
 import type { AuthenticationProvider } from './authentication-provider.js';
 import type { AuthContext } from './auth-context.js';
 
@@ -19,7 +19,7 @@ interface VerifyResponse {
 export class SupabaseAuthenticationProvider implements AuthenticationProvider {
   constructor(private readonly supabaseServiceUrl: string) {}
 
-  async authenticate(req: Request): Promise<AuthContext | null> {
+  async authenticate(req: FastifyRequest): Promise<AuthContext | null> {
     const token = this.extractToken(req);
     if (!token) {
       return null;
@@ -38,7 +38,7 @@ export class SupabaseAuthenticationProvider implements AuthenticationProvider {
     return { subject: verified.userId, role: verified.role, token };
   }
 
-  private extractToken(req: Request): string | null {
+  private extractToken(req: FastifyRequest): string | null {
     const header = req.headers.authorization;
     if (header?.startsWith('Bearer ')) {
       return header.slice('Bearer '.length).trim();
@@ -47,7 +47,7 @@ export class SupabaseAuthenticationProvider implements AuthenticationProvider {
     // Iframe top-level navigations can't set headers, so the token also
     // travels as a query param — see html-token-rewriter.ts for how it's
     // propagated onto every sub-resource request within the served HTML.
-    const queryToken = req.query['token'];
+    const queryToken = (req.query as Record<string, unknown>)['token'];
     if (typeof queryToken === 'string' && queryToken.length > 0) {
       return queryToken;
     }

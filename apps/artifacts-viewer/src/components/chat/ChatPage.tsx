@@ -1,20 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ROLES } from '@org/shared-auth';
 import { useSupabaseSession } from '../../lib/supabase/supabase-session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../../hooks/useArtifactSrc';
-import { fetchProviders, sendChatMessage, ChatRequestError } from '../../lib/api/chat-client';
+import { fetchProviders, sendChatMessage, ChatRequestError } from '../../lib/api/artifact-chat-client';
+import { fetchSkills } from '../../lib/api/skills-client';
 import type { ChatMessage, Provider, ProviderInfo } from '../../lib/chat/types';
 import type { ArtifactCatalogEntry } from '../../lib/artifacts/types';
+import type { Skill } from '../../lib/skills/types';
 import { ArtifactFrame } from '../ArtifactFrame';
 import { SupabaseSessionWidget } from '../supabase/SupabaseSessionWidget';
 import { ProviderSelector } from './ProviderSelector';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatComposer } from './ChatComposer';
 import { ExistingArtifactsPanel } from './ExistingArtifactsPanel';
+import { SkillsPanel } from './SkillsPanel';
+import { SkillSelector } from './SkillSelector';
 import { theme, secondaryButtonStyle } from '../../lib/ui/theme';
 
 export function ChatPage() {
@@ -28,9 +32,22 @@ export function ChatPage() {
   const [provider, setProvider] = useState<Provider>('claude');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewReloadKey, setPreviewReloadKey] = useState(0);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [skillsPanelOpen, setSkillsPanelOpen] = useState(false);
 
   const { artifacts, role } = useArtifactCatalog(token);
   const artifactSrc = useArtifactSrc(urlPath ?? '', token);
+
+  const refreshSkills = useCallback(() => {
+    fetchSkills()
+      .then((result) => {
+        setSkills(result);
+        setSelectedSkills((current) => current.filter((name) => result.some((s) => s.name === name)));
+      })
+      .catch(() => setSkills([]));
+  }, []);
 
   useEffect(() => {
     fetchProviders()
@@ -45,10 +62,19 @@ export function ChatPage() {
           { id: 'gemini', label: 'Gemini', model: 'gemini-2.5-flash' },
         ]);
       });
-  }, []);
+    refreshSkills();
+  }, [refreshSkills]);
 
   const handleSend = async (content: string) => {
-    const nextMessages: ChatMessage[] = [...messages, { role: 'user', content }];
+    // Naming the skills explicitly in the message itself is more reliable
+    // than relying on opencode to match the wording against each skill's
+    // description on its own — and stays visible in the transcript, so
+    // there's no hidden text the user can't see.
+    const finalContent =
+      selectedSkills.length > 0
+        ? `Use these skills: ${selectedSkills.map((name) => `"${name}"`).join(', ')}. ${content}`
+        : content;
+    const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: finalContent }];
     setMessages(nextMessages);
     setPending(true);
     setError(null);
@@ -64,6 +90,7 @@ export function ChatPage() {
       setSlug(response.slug);
       setUrlPath(response.url_path);
       setPreviewSlug(response.slug);
+      setPreviewReloadKey((k) => k + 1);
     } catch (err) {
       setError(err instanceof ChatRequestError ? err.message : 'Failed to reach the agent service');
     } finally {
@@ -111,11 +138,20 @@ export function ChatPage() {
             <Link href="/" style={{ fontSize: '0.85rem', color: theme.color.textMuted, textDecoration: 'none' }}>
               ← Viewer
             </Link>
-            <button type="button" onClick={handleNew} style={secondaryButtonStyle}>
-              + New
-            </button>
+            <Link href="/db-chat" style={{ fontSize: '0.85rem', color: theme.color.primary, textDecoration: 'none' }}>
+              Database Chat →
+            </Link>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <button type="button" onClick={() => setSkillsPanelOpen((v) => !v)} style={secondaryButtonStyle}>
+                {skillsPanelOpen ? 'Hide skills' : 'Skills'}
+              </button>
+              <button type="button" onClick={handleNew} style={secondaryButtonStyle}>
+                + New
+              </button>
+            </div>
           </div>
           <ProviderSelector providers={providers} provider={provider} onChange={setProvider} />
+          <SkillSelector skills={skills} selected={selectedSkills} onChange={setSelectedSkills} />
           {slug && (
             <span style={{ fontSize: '0.8rem', color: theme.color.textMuted }}>
               Editing: <strong style={{ color: theme.color.text }}>{slug}</strong>
@@ -123,7 +159,13 @@ export function ChatPage() {
           )}
         </header>
 
-        {token && (
+        {skillsPanelOpen && (
+          <div style={{ padding: '0.85rem 1rem', borderBottom: `1px solid ${theme.color.border}`, overflowY: 'auto', maxHeight: '40vh' }}>
+            <SkillsPanel skills={skills} onChange={refreshSkills} />
+          </div>
+        )}
+
+        {token && !skillsPanelOpen && (
           <div style={{ padding: '0.85rem 1rem', borderBottom: `1px solid ${theme.color.border}`, overflowY: 'auto', maxHeight: '35vh' }}>
             <ExistingArtifactsPanel artifacts={artifacts} activeSlug={slug} onRead={handleRead} onEdit={handleEdit} />
           </div>
@@ -153,6 +195,20 @@ export function ChatPage() {
             Read-only preview — click <strong>Edit</strong> on this artifact to modify it.
           </p>
         )}
+        {artifactSrc && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              padding: '0.5rem 1rem',
+              borderBottom: `1px solid ${theme.color.border}`,
+            }}
+          >
+            <button type="button" onClick={() => setPreviewReloadKey((k) => k + 1)} style={secondaryButtonStyle}>
+              ⟳ Refresh
+            </button>
+          </div>
+        )}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {!token && (
             <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>Log in with Supabase to preview artifacts.</p>
@@ -162,7 +218,7 @@ export function ChatPage() {
           )}
           {artifactSrc && (
             <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-              <ArtifactFrame src={artifactSrc} title={slug ?? 'artifact preview'} />
+              <ArtifactFrame src={artifactSrc} title={slug ?? 'artifact preview'} reloadNonce={previewReloadKey} />
             </div>
           )}
         </main>

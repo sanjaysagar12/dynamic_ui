@@ -8,12 +8,13 @@ import { useArtifactSrc } from '../hooks/useArtifactSrc';
 import { ArtifactSelector } from './ArtifactSelector';
 import { ArtifactFrame } from './ArtifactFrame';
 import { SupabaseSessionWidget } from './supabase/SupabaseSessionWidget';
-import { theme } from '../lib/ui/theme';
+import { theme, secondaryButtonStyle } from '../lib/ui/theme';
 
 export function ArtifactViewer() {
   const { session } = useSupabaseSession();
   const token = session?.accessToken ?? null;
   const [artifactPath, setArtifactPath] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
   const { artifacts, role, loading: catalogLoading, error: catalogError } = useArtifactCatalog(token);
   const artifactSrc = useArtifactSrc(artifactPath, token);
 
@@ -58,9 +59,14 @@ export function ArtifactViewer() {
           )}
         </div>
 
-        <Link href="/chat" style={{ fontSize: '0.9rem', fontWeight: 600, color: theme.color.primary, textDecoration: 'none' }}>
-          AI Chat →
-        </Link>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <Link href="/chat" style={{ fontSize: '0.9rem', fontWeight: 600, color: theme.color.primary, textDecoration: 'none' }}>
+            Artifact Chat →
+          </Link>
+          <Link href="/db-chat" style={{ fontSize: '0.9rem', fontWeight: 600, color: theme.color.primary, textDecoration: 'none' }}>
+            Database Chat →
+          </Link>
+        </nav>
 
         <div style={{ borderTop: `1px solid ${theme.color.border}`, paddingTop: '0.85rem' }}>
           <SupabaseSessionWidget role={role} popupPlacement="above" />
@@ -76,9 +82,23 @@ export function ArtifactViewer() {
             <p style={{ padding: '1rem', color: theme.color.textMuted }}>No artifacts available for role &quot;{role}&quot;.</p>
           )}
           {artifactSrc && (
-            <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-              <ArtifactFrame src={artifactSrc} title={artifactPath} />
-            </div>
+            <>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  padding: '0.5rem 1rem',
+                  borderBottom: `1px solid ${theme.color.border}`,
+                }}
+              >
+                <button type="button" onClick={() => setReloadKey((k) => k + 1)} style={secondaryButtonStyle}>
+                  ⟳ Refresh
+                </button>
+              </div>
+              <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+                <ArtifactFrame src={artifactSrc} title={artifactPath} reloadNonce={reloadKey} />
+              </div>
+            </>
           )}
         </main>
       </div>

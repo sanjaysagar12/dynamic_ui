@@ -1,26 +1,22 @@
-import { Router } from 'express';
+import type { FastifyInstance } from 'fastify';
 import type { AuthenticationProvider } from '../auth/authentication-provider.js';
 import type { ArtifactCatalogService } from '../service/artifact-catalog.service.js';
 
-export function createArtifactsCatalogRouter(
+export function registerArtifactsCatalogRoutes(
+  fastify: FastifyInstance,
   catalogService: ArtifactCatalogService,
   authenticationProvider: AuthenticationProvider,
-): Router {
-  const router = Router();
-
-  router.get('/api/artifacts', async (req, res) => {
-    const authContext = await authenticationProvider.authenticate(req);
+): void {
+  fastify.get('/api/artifacts', async (request, reply) => {
+    const authContext = await authenticationProvider.authenticate(request);
 
     if (!authContext) {
-      res.status(401).json({ error: 'Authentication required' });
-      return;
+      return reply.code(401).send({ error: 'Authentication required' });
     }
 
     const all = await catalogService.list();
     const visible = all.filter((entry) => entry.roles.includes(authContext.role));
 
-    res.json({ role: authContext.role, artifacts: visible });
+    return { role: authContext.role, artifacts: visible };
   });
-
-  return router;
 }

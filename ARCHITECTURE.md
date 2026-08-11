@@ -1,88 +1,79 @@
 # Dynamic UI — Architecture Overview
 
-This Nx workspace implements an **Artifacts platform**: a static-file server that serves role-gated "artifacts" (self-contained HTML/CSS/JS bundles) similarly to Apache, a backend that issues development JWTs, a Supabase middle layer that holds the only database credentials in the system, an AI agent that generates and updates artifacts from a chat prompt (Claude or Gemini) using a real-schema-aware tool, and a Next.js viewer that renders artifacts in a sandboxed iframe and mediates their data access over `postMessage`.
+This Nx workspace implements an **Artifacts platform**: a static-file server that serves role-gated "artifacts" (self-contained HTML/CSS/JS bundles) similarly to Apache, a Supabase middle layer that holds the only database credentials in the system and is also the sole authority on "who is this caller and what role do they have", an artifact agent that drives [opencode](https://opencode.ai) to generate and update artifacts (and their reusable Skills) from a chat prompt, a database agent that answers natural-language questions about the data itself — strictly scoped to the caller's own Supabase permissions via Row-Level Security — and a Next.js viewer that renders artifacts in a sandboxed iframe, mediates their data access over `postMessage`, and hosts both chat experiences.
+
+Identity is real Supabase Auth throughout — there is no dev-JWT stand-in service anymore. A user logs in once with Supabase; every other service that needs to know who they are (and what role they have) asks `supabase-service`, never decodes anything itself.
 
 ```
 apps/
-  artifacts-viewer/     Next.js app — role switcher, AI chat page, sandboxed iframe viewer + postMessage data bridge (port 4200)
+  artifacts-viewer/     Next.js app — Artifact Chat + Database Chat pages, sandboxed iframe viewer + postMessage
+                          data bridge (port 4200)
 services/
-  artifacts-server/     Express app — serves artifacts, enforces JWT auth + role authorization + a locked-down CSP (port 3000)
-  backend-server/        Express app — issues development JWTs (port 3334)
-  supabase-service/      Express app — anon-key-only middle layer between the parent app and Supabase (port 3335)
-  tool-service/          Python/FastAPI app — writes/reads artifact files on disk, and is the only holder of the Supabase secret key (schema introspection) (port 5001)
-  agent-service/         Python/FastAPI app — turns a chat prompt into an artifact via Claude or Gemini, using a get_schema tool (port 5002)
+  artifacts-server/     Fastify app — serves artifacts, verifies the caller via supabase-service + a locked-down CSP (port 3000)
+                          artifacts/.opencode/tool/get_schema.ts, artifacts/.opencode/skills/*/SKILL.md, and
+                          artifacts/AGENTS.md — opencode's project-local schema tool, reusable Skills, and
+                          artifact-authoring instructions, shared by every artifact directory underneath
+  supabase-service/      Fastify app — anon-key-only middle layer between the parent app and Supabase; also the
+                          only place that turns a Supabase access token into a verified identity + role (port 3335).
+                          Every other service that needs to read Supabase data on a user's behalf — including
+                          db-agent-service below — goes through this one, never a Supabase client of its own.
+  artifact-agent-service/ TypeScript/Fastify app — turns a chat prompt into an artifact by shelling out to opencode,
+                          and owns CRUD for opencode Skills (port 5002); endpoint: POST /agent/chat-artifact
+  db-agent-service/      TypeScript/Fastify app — answers natural-language questions about the data and can
+                          create/update/delete rows (only after explaining the change and getting the user's
+                          go-ahead), all through supabase-service under the caller's own Supabase JWT, so RLS —
+                          not this service — decides what's actually allowed (port 5003); endpoint: POST /agent/chat-db
 packages/
-  shared-auth/           Shared TypeScript library — Role types + JWT signing/verification
+  shared-auth/           Shared TypeScript library — the Role type and the canonical list of valid roles
 ```
 
-All six services run independently and talk to each other only over HTTP; there is no shared runtime state.
+These services run independently and talk to each other only over HTTP; there is no shared runtime state.
 
 ---
 
 ## 1. `packages/shared-auth`
 
-A small library shared by all the Node services (and, for its browser-safe half, by the Next.js app).
+A tiny library shared by the Node services and the Next.js app's browser bundle. The valid-roles list lives in exactly one place — `src/lib/roles.ts` (currently `["OWNER", "STOREKEEPER"]`) — so adding or renaming a role is a one-file change instead of hunting through every service:
 
-It has **two entry points** so that browser bundles never pull in `jsonwebtoken` (a Node-only dependency):
+```ts
+export const ROLES = ['OWNER', 'STOREKEEPER'] as const;
 
-- **`@org/shared-auth`** (`src/index.ts`) — browser-safe:
-  - `Role` — `'admin' | 'manager'`
-  - `ROLES` — the list of valid roles
-  - `isRole(value)` — type guard
-  - `AuthTokenPayload` / `VerifiedAuthToken` — JWT payload shapes
-- **`@org/shared-auth/server`** (`src/server.ts`) — Node-only:
-  - `JwtService` — `sign(payload)` / `verify(token)`, backed by `jsonwebtoken`
-  - `InvalidTokenError` — thrown by `verify()` on a bad/expired/mis-signed token
+export type Role = string;
+export const ROLES: readonly Role[]; // re-exported from roles.ts
+export function isRole(value: unknown): value is Role;
+```
 
-Any project that only needs `Role`/`isRole` (like the Next.js client components) imports the main entry; anything that actually signs or verifies tokens imports `/server`.
+`roles.ts` is a plain TypeScript module — no JSON import-attribute machinery, no filesystem reads at runtime — which keeps this package safe to bundle directly into browser code (no Node-only APIs), which matters because `apps/artifacts-viewer`'s client components import `Role`/`ROLES` directly. There used to be a Node-only `/server` entry point (a hand-rolled JWT sign/verify service) — it's gone; nothing in the system mints or verifies its own tokens anymore, Supabase does that.
 
 ---
 
-## 2. `services/backend-server` (port 3334)
+## 2. `services/artifacts-server` (port 3000)
 
-Issues development JWTs. Stands in for a real identity provider.
-
-**Endpoint:**
-```
-GET /auth/dev-token?role=admin|manager
-→ 200 { "token": "<jwt>", "role": "admin", "tokenType": "Bearer" }
-→ 400 if role is missing/invalid
-```
-```
-GET /health → 200 { "status": "ok" }
-```
-
-**Structure:**
-- `config.ts` — reads `PORT` (default `3334`), `JWT_SECRET`, `JWT_ISSUER` (default `backend-server`), `JWT_EXPIRES_IN` (default `1h`)
-- `services/token.service.ts` — wraps `JwtService` from `@org/shared-auth/server`, mints a token with a random `sub` (UUID) and the requested role
-- `controllers/auth.controller.ts` — Express router validating the `role` query param via `isRole`
-- `app.ts` / `main.ts` — wiring and startup
-
----
-
-## 3. `services/artifacts-server` (port 3000)
-
-Serves artifacts from disk the way Apache serves static files — folder structure maps directly to URL structure — but every artifact is gated by a JWT + a per-artifact `manifest.json` declaring which roles may view it.
+Serves artifacts from disk the way Apache serves static files — folder structure maps directly to URL structure — but every artifact is gated by a **verified Supabase identity** + a per-artifact `manifest.json` declaring which roles may view it.
 
 **Artifact folder layout** (lives at `services/artifacts-server/artifacts/`):
 ```
 artifacts/
+  AGENTS.md             opencode's artifact-authoring rules — shared by every artifact directory below
+  .opencode/
+    tool/get_schema.ts  opencode's Supabase schema-introspection tool
+    skills/*/SKILL.md   reusable, on-demand procedures opencode can invoke (see §4)
   dashboard/
     index.html
-    manifest.json      { "roles": ["admin", "manager"] }
+    manifest.json      { "roles": ["OWNER", "STOREKEEPER"] }
     assets/style.css
     assets/app.js
   admin/
     users/
       index.html
-      manifest.json     { "roles": ["admin"] }
+      manifest.json     { "roles": ["OWNER"] }
       assets/style.css
       assets/app.js
   _shared/
-    manifest.json       { "roles": ["admin", "manager"] }
+    manifest.json       { "roles": ["OWNER", "STOREKEEPER"] }
     tailwind.min.css    vendored offline Tailwind CSS build, shared by every artifact
 ```
-`/dashboard/` and `/admin/users/` map 1:1 to `GET /dashboard/` and `GET /admin/users/` on the server. Nested asset requests (e.g. `/admin/users/assets/app.js`) resolve against the nearest ancestor directory that has a `manifest.json`, so an artifact's whole subtree shares one manifest. `_shared/` (and any other `_`-prefixed folder) rides the same manifest-gated resolution/auth pipeline as a real artifact — any authenticated user can fetch `/_shared/tailwind.min.css` — but is excluded from the public artifact catalog (see `artifact-catalog.service.ts`), so it never shows up as a selectable artifact in the UI.
+`/dashboard/` and `/admin/users/` map 1:1 to `GET /dashboard/` and `GET /admin/users/` on the server. Nested asset requests (e.g. `/admin/users/assets/app.js`) resolve against the nearest ancestor directory that has a `manifest.json`, so an artifact's whole subtree shares one manifest. `_shared/` (and any other `_`-prefixed folder) rides the same manifest-gated resolution/auth pipeline as a real artifact — any authenticated user can fetch `/_shared/tailwind.min.css` — but is excluded from the public artifact catalog (see `artifact-catalog.service.ts`), so it never shows up as a selectable artifact in the UI. `AGENTS.md` and `.opencode/` are excluded from `.gitignore`'s otherwise-blanket ignore of this directory (everything else here is AI-generated content, not source).
 
 **Request pipeline**, each concern in its own class:
 
@@ -90,29 +81,30 @@ artifacts/
 |---|---|
 | `resolution/artifact-path-resolver.ts` | Maps a URL path → filesystem file, walking up to find the owning artifact directory (the nearest ancestor with `manifest.json`). Blocks path traversal and direct `manifest.json` access. Emits a trailing-slash redirect when a directory is requested without `/`. |
 | `manifest/manifest-repository.ts` | Loads + caches `manifest.json` for an artifact directory. |
-| `auth/authentication-provider.ts` + `jwt-authentication-provider.ts` | `AuthenticationProvider` interface with a JWT implementation — reads a Bearer header **or** a `?token=` query param (iframe `src` navigations can't set headers). |
-| `authorization/authorization-strategy.ts` + `role-authorization-strategy.ts` | `AuthorizationStrategy` interface; the current implementation checks the authenticated role against `manifest.roles`. |
-| `service/artifact-service.ts` | Orchestrates resolve → load manifest → authenticate → authorize. |
+| `auth/authentication-provider.ts` + `supabase-authentication-provider.ts` | `AuthenticationProvider` interface (`authenticate(req): Promise<AuthContext \| null>`) with a `SupabaseAuthenticationProvider` implementation — reads a Bearer header **or** a `?token=` query param (iframe `src` navigations can't set headers), then forwards that token to `supabase-service`'s `POST /auth/verify` over HTTP. It never decodes or trusts the token itself; a failed/invalid/missing token all resolve to `null`. |
+| `authorization/authorization-strategy.ts` + `role-authorization-strategy.ts` | `AuthorizationStrategy` interface; the current implementation checks the verified role against `manifest.roles`. |
+| `service/artifact-service.ts` | Orchestrates resolve → load manifest → authenticate (awaits the HTTP round-trip) → authorize. |
 | `service/artifact-catalog.service.ts` | Walks the artifacts tree for the public catalog (`GET /api/artifacts`), skipping any path segment starting with `_`. |
-| `http/artifacts.router.ts` | Express router; maps errors to `401` (no/invalid token), `403` (role not permitted), `404` (artifact not found); sets `Content-Security-Policy: connect-src 'none'` on every served HTML document. |
+| `http/artifacts.router.ts` | Fastify route plugin; maps errors to `401` (no/invalid token), `403` (role not permitted), `404` (artifact not found); sets `Content-Security-Policy: connect-src 'none'` on every served HTML document. |
 | `http/html-token-rewriter.ts` | Appends the auth token to every relative `href`/`src` in served HTML, since the browser's own sub-resource requests (`<link>`, `<script>`) never see the query-param token a top-level iframe navigation carries. |
 
-Both `AuthenticationProvider` and `AuthorizationStrategy` are interfaces specifically so new auth methods (API keys, sessions) or authorization rules (ABAC, per-user overrides) can be added without touching the rest of the pipeline.
+Both `AuthenticationProvider` and `AuthorizationStrategy` are interfaces specifically so new auth methods or authorization rules (ABAC, per-user overrides) can be added without touching the rest of the pipeline.
 
-**Config** (`config.ts`): `PORT` (default `3000`), `ARTIFACTS_ROOT` (default `<project>/artifacts`), `JWT_SECRET`, `JWT_ISSUER` (default `backend-server` — **must match** `backend-server`'s issuer for token verification to succeed).
+**Config** (`config.ts`): `PORT` (default `3000`), `ARTIFACTS_ROOT` (default `<project>/artifacts`), `SUPABASE_SERVICE_URL` (default `http://localhost:3335`) — where `supabase-service` lives, since every request now needs a real network round-trip to verify.
 
 **Security note — CSP:** the iframe `sandbox` attribute alone does not restrict outbound network calls (fetch/XHR/WebSocket) from artifact JS, only DOM/storage/navigation. `Content-Security-Policy: connect-src 'none'` on every artifact HTML response is what actually closes that gap — see `artifacts/sandbox-security-test/` for a live artifact that deliberately attempts every attack this is meant to block (localStorage/sessionStorage/cookies, parent-DOM access, external fetch, and direct calls to `supabase-service`/the parent's `/api/data`) and reports whether each was actually blocked.
 
 ---
 
-## 4. `services/supabase-service` (port 3335)
+## 3. `services/supabase-service` (port 3335)
 
-The **only** thing in the system that talks to Supabase at request time, and it does so using **only the Supabase anon/publishable key** — never a secret/service-role key. It sits between the parent app (`artifacts-viewer`) and Supabase: the parent logs a user in through here (getting back a Supabase JWT + user id), then makes every subsequent data request through here, attaching that same user JWT so Postgres Row-Level Security — not this service — is what actually scopes what a caller can read or write.
+The **only** thing in the system that talks to Supabase's data API at request time, and it does so using **only the Supabase anon/publishable key** — never a secret/service-role key. It's also the **only** place in the system that turns a Supabase access token into a trusted identity + app role — every other service (`artifacts-server`) delegates that decision here rather than inspecting the token itself.
 
 **Endpoints:**
 ```
 POST /auth/signup   { email, password }  → creates a Supabase user, returns { accessToken, userId, email }
 POST /auth/login    { email, password }  → signs in, returns { accessToken, userId, email }
+POST /auth/verify   (Authorization: Bearer <token>)  → { userId, email, role } or 401/403
 GET  /data/:table              ?column=value&order=col.asc|desc&limit=n   → { data: [...] }  (list, RLS-scoped)
 POST /data/:table   { ...fields }                                          → the created row (bare, not wrapped)
 PATCH /data/:table/:id  { ...fields }                                      → the updated row (bare, not wrapped)
@@ -121,118 +113,141 @@ GET  /health
 ```
 `:table` is schema-agnostic (validated against a plain identifier regex) — this works against any table, not a hardcoded one. In `/data/:table` list requests, every query-string key is treated as an exact-match column filter **except** two reserved keys: `order` (`column.asc` / `column.desc`) and `limit` (row count) — see `data/records.service.ts`.
 
+**How `/auth/verify` works** (`auth/auth.service.ts`):
+1. `client.auth.getUser(accessToken)` on an anon client — validates the token is a real, current Supabase session. Anything else (expired, malformed, revoked) → `401`.
+2. A **user-scoped** client (the caller's own token attached, not a service-role bypass) reads `SELECT role FROM users WHERE id = <the auth user's id>` — Row-Level Security, not application code, is what actually permits this read. No row → `403`.
+3. Returns `{ userId, email, role }`.
+
+Note the `users` table keys directly on the Supabase auth user id (`id` itself, not a separate `authUserId` foreign-key column) and has no `isActive` flag — a matching row is itself treated as "active". This reflects the schema that's actually live in this project's Supabase instance, which is simpler than (and has diverged from) the fuller `authUserId`/`isActive` design sketched in `packages/sql/01_create_tables.sql`.
+
 **Structure:**
-- `supabase/supabase-client-factory.ts` — `SupabaseClientFactory`: builds a `@supabase/supabase-js` client scoped to a specific user by attaching `global.headers.Authorization: Bearer <user JWT>` (not `.auth.setSession()`), always constructed with the anon key
-- `auth/auth.service.ts` / `auth.controller.ts` — sign-up/sign-in against Supabase Auth
-- `auth/require-supabase-auth.ts` — middleware requiring a valid `Authorization: Bearer <token>` + `X-User-Id` header on `/data/*`
+- `supabase/supabase-client-factory.ts` — `SupabaseClientFactory`: builds a `@supabase/supabase-js` client scoped to a specific user by attaching `global.headers.Authorization: Bearer <user token>` (not `.auth.setSession()`), always constructed with the anon key
+- `auth/auth.service.ts` / `auth.controller.ts` — sign-up/sign-in/verify against Supabase Auth
+- `auth/require-supabase-auth.ts` — a Fastify `preHandler` hook requiring a valid `Authorization: Bearer <token>` header on `/data/*` and `/auth/verify`
 - `data/records.service.ts` — `RecordsService`: the generic list/create/update/remove proxy described above
-- `data/records.controller.ts` — Express router wiring the above to HTTP verbs
+- `data/records.controller.ts` — Fastify route plugin wiring the above to HTTP verbs
+- `middleware/error-handler.ts` — catch-all error handler registered via `fastify.setErrorHandler`; anything that reaches it gets logged server-side and returned as `{ error: message }` with a real status code, instead of Fastify's default error handler
 - `config.ts` — `PORT` (default `3335`), `SUPABASE_URL`, `SUPABASE_ANON_KEY`
 
-**Why no `/schema` endpoint here:** Supabase's own schema/OpenAPI introspection endpoint rejects anon keys outright ("Secret API key required"), which conflicts with this service's anon-key-only design. Schema introspection was moved to `tool-service` instead (§5), which is allowed to hold a secret key because it's never in the runtime request path for artifact data.
+**Why no `/schema` endpoint here:** Supabase's own schema/OpenAPI introspection endpoint rejects anon keys outright ("Secret API key required"), which conflicts with this service's anon-key-only design. Schema introspection instead lives in opencode's own `get_schema` tool (§4), which is allowed to hold a secret key because it's never in the runtime request path for artifact data.
 
 ---
 
-## 5. `services/tool-service` (port 5001, Python/FastAPI)
+## 4. `services/artifact-agent-service` (port 5002, TypeScript/Fastify)
 
-The only thing in the system with filesystem write access to `services/artifacts-server/artifacts/`, **and** the only thing in the system that holds the Supabase **secret** key. Both exist so the AI agent manipulates artifacts and looks up real schema through a narrow, validated API rather than touching disk or Supabase directly.
+Takes a natural-language chat prompt and drives [opencode](https://opencode.ai) — run as a subprocess, one invocation per chat turn — to generate or edit the artifact's files directly on disk. There is no intermediate "write artifact" service: opencode has real `read`/`write`/`edit` tools and operates straight against `services/artifacts-server/artifacts/<slug>/`, the same directory `artifacts-server` serves from. This service also owns CRUD for opencode Skills.
 
 **Endpoints:**
 ```
-POST /tools/write-artifact   { slug, roles, files: {path: content} }  → creates or overwrites an artifact (writes manifest.json + every file)
-GET  /tools/read-artifact?slug=...                                    → { slug, roles, files } or 404
-GET  /tools/list-artifacts                                            → catalog of all artifacts on disk
-GET  /tools/get-schema                                                → { tables: [{ table, columns: [{name, type, nullable}] }] }
-GET  /health
+GET    /agent/providers                          → { default, providers: [{id, label, model}] } — for populating a model picker
+POST   /agent/generate-artifact  { prompt, slug?, roles?, provider?, model? }  → one-shot create (thin wrapper around /chat-artifact)
+POST   /agent/chat-artifact  { messages, slug?, roles?, provider?, model? }    → multi-turn create/update, returns updated message history
+GET    /agent/skills                             → { skills: [{name, description, content}] }
+GET    /agent/skills/{name}                       → one skill, 404 if missing
+POST   /agent/skills  { name, description, content }  → create, 201; 409 if the name exists; 400 if invalid
+PUT    /agent/skills/{name}  { description, content }  → update, 404 if missing
+DELETE /agent/skills/{name}                       → 204, 404 if missing
+GET    /health
 ```
 
-**Structure:**
-- `app/services/artifact_writer.py` — `ArtifactWriterService`: validates `slug`/file paths against path traversal (rejects `..`, confines every resolved path to `ARTIFACTS_ROOT`), requires `index.html` among the written files, writes `manifest.json` from `roles`
-- `app/services/artifact_catalog.py` — walks the artifacts tree for `list-artifacts`
-- `app/services/schema_service.py` — `SchemaService`: calls Supabase's `GET /rest/v1/` with `Accept: application/openapi+json` **using the secret key** (the anon key is rejected by this specific endpoint), parses table/column definitions out of the returned OpenAPI document
-- `app/routers/tools.py` — FastAPI router, maps `InvalidArtifactError` → 400, missing artifact → 404, schema errors → 503/whatever status Supabase returned
-- `app/config.py` — `PORT` (default `5001`), `ARTIFACTS_ROOT` (default `../artifacts-server/artifacts`, i.e. the same folder `artifacts-server` serves from), `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (loaded from `.env` via `python-dotenv`)
+**How a chat turn works** (`src/services/chat-service.ts`):
+1. Resolve the artifact's `slug` — the caller's `slug` if editing, otherwise a deterministic slugified form of the first message (`src/services/slug.ts`; no LLM round-trip just to name the folder).
+2. Resolve which model opencode should use: `--model anthropic/<model>` or `--model google/<model>`, built from the request's `provider`/`model` (or the `claude`/`gemini` defaults) — see `PROVIDER_MODEL_PREFIX` in `src/config.ts`. Provider *credentials* are opencode's own concern (`opencode auth login`, or `ANTHROPIC_API_KEY`/`GEMINI_API_KEY` inherited from this process's environment), not something this service holds.
+3. Run opencode (`src/services/opencode-runner.ts`): `opencode run --dir <artifact_dir> --format json --model <model> [--session <id>] "<prompt>"` as a subprocess (via `cross-spawn`, with its stdin explicitly closed rather than left as an open pipe — otherwise opencode blocks waiting to read it), parsing its newline-delimited JSON event stream for the final assistant text (the `reply`) and its session id. A session id is cached per slug (in-memory) so a follow-up edit continues the same opencode session instead of re-discovering the directory from scratch; when there's no session to continue, the full message transcript is reconstructed into the prompt instead of just the latest message, so context is never silently lost. `OPENCODE_TIMEOUT_SECONDS` (default `900`) bounds how long a single turn can run — a large multi-screen artifact can legitimately take several minutes.
+4. Write `manifest.json` directly (`src/services/manifest.ts`) — the roles/title convention artifacts-server's catalog and authorization depend on. opencode never touches this file itself (see `AGENTS.md` below); this service does it after a successful run, so a failed/partial opencode run never leaves a manifest for broken content.
+5. Enumerate whatever files actually changed on disk (excluding `manifest.json`) to report `files_written` — no separate service call needed since this process already has the artifacts-root filesystem.
 
-Registered as a plain Nx `project.json` (not a package.json-based JS project) with `install` / `serve` / `start` targets running `pip install` / `uvicorn` directly — Nx auto-discovers any `project.json` in the repo regardless of language.
+opencode itself gets its capabilities from files under `services/artifacts-server/artifacts/`, discovered automatically by walking up from the artifact's own directory (this is opencode's own built-in behavior, not something this service implements):
+- **`AGENTS.md`** — the three-file artifact shape (`index.html`, `assets/style.css`, `assets/app.js`), no `<form>`/`type="submit"` (sandboxed without `allow-forms`), no external libraries/CDNs, Tailwind usage (link `../_shared/tailwind.min.css` before `assets/style.css`), the exact `postMessage` data-bridge wire protocol artifacts must use for persisted data (mirrors `useArtifactDataBridge.ts`, §6), and an instruction to never touch `manifest.json`. Always in context, every turn.
+- **`.opencode/tool/get_schema.ts`** — a custom opencode tool that calls Supabase's `GET /rest/v1/` with `Accept: application/openapi+json` **using the secret key**, reporting real table/column names, nullability, enum-typed columns' exact allowed values (PostgREST includes these inline in the OpenAPI document — no extra RPC needed), and — via a `get_table_constraints` SECURITY DEFINER RPC (`services/supabase-service/sql/003_create_table_constraints_rpc.sql`) — primary/foreign/unique/CHECK constraints. Invoked as a tool call, on demand, not always in context.
+- **`.opencode/skills/*/SKILL.md`** — reusable, named procedures (e.g. "our house style for a CRUD form", "how to detect the current user's role correctly"), each with a `name` + `description` frontmatter and a markdown body. Every skill's `name`+`description` is always in context (cheap — just a menu of what's available); a skill's full body is only loaded when opencode actually decides to use it, via its built-in `skill` tool call. The chat UI can name a skill explicitly in the message text to make that decision reliable rather than left to the model's own judgment (see `ChatPage.tsx`, §6) — but opencode can and does pick a relevant skill up from wording alone too. Managed via the `/agent/skills` endpoints above, which write/read/delete `SKILL.md` files directly (`src/services/skill-service.ts`) — no YAML dependency, since the format is just two string fields in a small hand-rolled frontmatter parser.
 
-**Why the secret key is safe here:** `get-schema` is only ever called by `agent-service` at artifact-*generation* time, server-side, to look up real table/column names before writing code — it is never in the path of a running artifact's data requests (those go through `supabase-service`, anon-key-only, RLS-scoped). No artifact, and no browser code, ever sees this key or this endpoint.
+**Config** (`src/config.ts`): `PORT` (default `5002`), `ARTIFACTS_SERVER_URL`, `ARTIFACTS_ROOT` (default `../artifacts-server/artifacts`), `OPENCODE_BIN` (default `opencode`, resolved via `PATH`), `OPENCODE_TIMEOUT_SECONDS` (default `900`), `LLM_PROVIDER`/`ANTHROPIC_MODEL`/`GEMINI_MODEL` (default model choices), plus `SUPABASE_URL`/`SUPABASE_SECRET_KEY` — needed here (not in a separate service) because the opencode subprocess inherits this process's environment, and that's what its `get_schema` tool reads.
+
+**Why the secret key is safe here:** `get_schema` is only ever invoked by opencode at artifact-*generation* time, server-side, to look up real table/column names before writing code — it is never in the path of a running artifact's data requests (those go through `supabase-service`, anon-key-only, RLS-scoped). No artifact, and no browser code, ever sees this key or this endpoint.
 
 ---
 
-## 6. `services/agent-service` (port 5002, Python/FastAPI)
+## 5. `services/db-agent-service` (port 5003, TypeScript/Fastify)
 
-Takes a natural-language chat prompt, asks an LLM to produce a complete artifact (or an updated version of one), and calls `tool-service` to persist it. The LLM has a real tool — `get_schema` — that it can call mid-generation to look up the actual Supabase schema before writing persistence code, so generated artifacts reference real table/column names instead of guessing.
+Answers natural-language questions about the data itself — "how many open jobs are due this week?", "what's the stock balance on material X?" — instead of generating UI. Deliberately kept separate from `artifact-agent-service`: it holds no opencode subprocess, no artifacts-root filesystem access, and no Supabase key of any kind, so there's no shared state between the two agents that could leak a JWT or let one bypass the other's boundaries.
 
-**Endpoints:**
+**Endpoint:**
 ```
-GET  /agent/providers                          → { default, providers: [{id, label, model}] } — for populating a model picker
-POST /agent/generate-artifact  { prompt, slug?, roles?, provider?, model? }  → one-shot create
-POST /agent/chat  { messages, slug?, roles?, provider?, model? }             → multi-turn create/update, returns updated message history
+POST /agent/chat-db  { messages, jwt, model? }  → { reply, messages } — jwt is the caller's own Supabase access token
 GET  /health
 ```
 
-**Multi-provider LLM abstraction** (`app/services/providers/`):
-- `base.py` — `ArtifactLLMClient` ABC (`generate(messages, context_files) -> ArtifactSpec`), the shared JSON schema every provider is constrained to (`reply`, `slug`, `title`, `index_html`, `css`, `js`), `build_system_prompt()` (folds an artifact's *current* files into the prompt when updating, so the model returns a complete, coherent replacement rather than a diff), the `get_schema` tool description, and `format_schema_for_tool_result()`
-- `claude_provider.py` — Anthropic Messages API. Runs a bounded tool-calling loop first (plain `messages.create` with `tools=[get_schema]`, up to 3 iterations, executing `tool_client.get_schema()` on request) and folds any tool calls/results into the conversation; the final answer is then a separate `messages.stream` call with `output_config.format` (`json_schema`) and adaptive thinking
-- `gemini_provider.py` — `google-genai`. Same two-phase shape: a tool-enabled `generate_content` loop using `types.FunctionDeclaration`/`function_call` parts, then a final call with `response_schema=ArtifactSpec` giving a typed `.parsed` result
-- `factory.py` — `get_llm_client(provider, model_override, settings, tool_client)` picks the implementation, threading through the shared `ToolServiceClient`; `list_providers()` backs `GET /agent/providers`
-- `app/services/tool_client.py` — `ToolServiceClient`: HTTP client for all of `tool-service`'s endpoints, including `get_schema()`
+**How a chat turn works** (`src/services/db-chat-service.ts`):
+1. The full message history is sent to Claude (`@anthropic-ai/sdk`, called directly — no opencode involved) along with a system prompt describing the known schema (`src/services/schema-context.ts` — this service is never given a secret key, so unlike opencode's `get_schema` tool it can't introspect the schema live) and two tools: `query_table` (read: table name + optional column filters/order/limit) and `write_table` (create/update/delete a single row).
+2. Every tool call is forwarded to `services/supabase-service`'s `/data/:table` endpoints (`src/services/supabase-query-client.ts`, `GET`/`POST`/`PATCH`/`DELETE`) with the caller's own JWT as the `Authorization` header — **not** a service-role key. This is the same "dedicated Supabase service" every other part of the system already uses for user-scoped data access (§3); `db-agent-service` doesn't roll its own Supabase client, it's just another caller of `supabase-service`. Row-Level Security on the Postgres side, not this agent's own judgment, decides what's actually allowed to come back or be written.
+3. The loop runs for up to `DB_AGENT_MAX_TOOL_ITERATIONS` (default 6) rounds of tool calls; the final round is made with no tool offered at all, forcing a plain-text answer instead of another query.
+4. The assistant's final text becomes the `reply`, appended to the outward message history and returned — no server-side session state is kept between turns (unlike `artifact-agent-service`'s opencode sessions), since each turn just resends the full transcript.
 
-Provider/model selection: `LLM_PROVIDER` env var (default `gemini`) is the default; each request can override via `provider`/`model`. Per-provider model defaults also come from env: `ANTHROPIC_MODEL` (default `claude-opus-4-8`), `GEMINI_MODEL` (default `gemini-2.5-flash`), plus `GEMINI_API_KEY` (Claude's key resolves however the Anthropic SDK normally resolves it — env var, auth token, or CLI profile). **This service holds no Supabase credentials of its own** — schema lookups are delegated entirely to `tool-service`.
+**Writes require the user's explicit confirmation, in plain conversation, before they happen.** The system prompt instructs the model: before any create/update/delete, reply in plain text describing exactly what it's about to do (table, operation, which row, field values) and wait — it must not call `write_table` in that same turn. Only after the user's own later message clearly confirms that specific action may it call `write_table` again with `confirmed: true`; the tool itself refuses the call otherwise (`runWriteTable` in `db-chat-service.ts` checks `confirmed === true` before touching `supabase-service` at all), so a model that "forgets" to ask is blocked at the tool boundary, not just by prompt discipline. Confirmation is a workflow/UX gate, not a security boundary — RLS is still what actually decides whether a write is allowed; a confirmed write a caller isn't permitted to make is still rejected by Postgres.
 
-**System prompt contract** (`BASE_SYSTEM_PROMPT`) mandates, in order:
-1. The three-file artifact shape (`index.html`, `assets/style.css`, `assets/app.js`), no `<form>`/`type="submit"` (sandboxed without `allow-forms`), no external libraries or CDNs.
-2. **Tailwind CSS** via the shared vendored asset — link `../_shared/tailwind.min.css` before `assets/style.css` and build the UI primarily with utility classes.
-3. **postMessage bridge only** for persisted data — the exact wire protocol implemented by `useArtifactDataBridge.ts` (below), including the precise response shapes per HTTP method (list responses are wrapped as `{ data: [...] }`; create/update responses are the bare row; delete resolves to `null`), which query keys are reserved (`order`, `limit`) vs. plain filters, and an explicit instruction to omit unused arguments rather than pass `null` — the artifact must **never** call Supabase or the parent's `/api/data/*` directly.
+**RLS-empty vs. real errors** (`src/core/errors.ts`, `src/services/supabase-query-client.ts`): a `200` with an empty array from `supabase-service` — whether because no rows exist or because RLS filtered every row out for this caller — is treated as an ordinary, successful "no data" result and fed back to the model as such; the system prompt explicitly forbids the model from speculating about *why* a result was empty, so it can't leak that restricted rows exist. A non-2xx response from `supabase-service` (bad table name, upstream failure, a write RLS rejects) is a distinct `SupabaseQueryError`, surfaced to the model as a tool error so it reports a problem instead of silently claiming success or "no data". A `401` is treated differently again — `SupabaseAuthError` aborts the whole turn and the route returns `401`, since an invalid/expired session is a caller-facing auth failure, not something the conversation should try to route around.
 
-**Chat/update flow** (`app/services/chat_service.py`): if the request carries a `slug`, it first calls `tool-service`'s `read-artifact` to fetch the artifact's current files as context; the LLM returns a full replacement; `tool-service`'s `write-artifact` overwrites it (create and update are the same write call — there's no separate "patch" endpoint). The response includes the full updated message history so the Next.js chat page can just replace its local state with it.
+**Config** (`src/config.ts`): `PORT` (default `5003`), `SUPABASE_SERVICE_URL` (default `http://localhost:3335`), `ANTHROPIC_API_KEY` (the only credential this service holds — authenticates it to Anthropic, never to Supabase), `DB_AGENT_MODEL` (default `claude-opus-4-8`), `DB_AGENT_MAX_TOOL_ITERATIONS` (default `6`).
 
-Both the single-shot and chat flows share a small `artifact_persistence.py` helper so the "call the LLM → write via tool-service → build a preview URL" sequence isn't duplicated.
+**Note on `src/services/schema-context.ts`:** `packages/sql/01_create_tables.sql` describes a much larger aspirational ERP schema that turned out **not** to be what's actually deployed on this project's live Supabase instance — the real schema is much smaller (`users`, `categories`, `products`, `stock_transactions`). The schema context was hand-corrected against a live introspection of the actual project (the same OpenAPI document `get_schema.ts` reads) after this mismatch caused every query the agent tried against the aspirational table names to fail with "table not found in the schema cache," surfacing to users as a generic "I ran into a problem" reply. Since this service has no secret key and can't introspect the schema itself at request time, keeping `schema-context.ts` in sync with whatever's actually live is a manual step — re-check it against reality (or against `get_schema.ts`'s output) if table/column errors start showing up again.
 
 ---
 
-## 7. `apps/artifacts-viewer` (port 4200)
+## 6. `apps/artifacts-viewer` (port 4200)
 
-A Next.js (App Router) app that lets a user pick a role and an artifact, fetches a token, renders the artifact in an isolated iframe, and mediates all of that artifact's data access over `postMessage` — the artifact itself never receives a Supabase token or calls any backend directly.
+A Next.js (App Router) app. There's no role picker anywhere — a user logs in with real Supabase credentials, and their role is whatever `supabase-service` reports for their account. The artifact list, the sidebar, and both chat pages all just reflect that.
 
 **Artifact rendering flow:**
-1. Browser calls this app's own `GET /api/token?role=...` (same-origin, no CORS needed).
-2. That Route Handler calls `backend-server`'s `/auth/dev-token` **server-side** (a BFF pattern — the browser never talks to `backend-server` directly, and `BACKEND_SERVICE_URL` never reaches the client bundle).
-3. The token comes back to the browser, which builds `http://localhost:3000/<artifact-path>/?token=<jwt>` and sets it as the iframe `src` (a query param, not a header, because a plain iframe navigation can't attach `Authorization`).
-4. `artifacts-server` validates the token and manifest exactly as described above and returns the artifact — or a JSON error, which just renders as text inside the frame.
+1. The user logs in via `SupabaseSessionWidget.tsx` (`POST /api/supabase/login`, a BFF route to `supabase-service`'s `/auth/login`). The resulting `{ accessToken, userId, email }` is held in React state (`supabase-session-context.tsx`), never in `localStorage`/cookies.
+2. That same Supabase access token is what's used everywhere a token is needed — there is no separate token-minting step. `useArtifactCatalog.ts` calls this app's own `GET /api/artifacts` with `Authorization: Bearer <token>`, which forwards to `artifacts-server`'s `GET /api/artifacts` (`lib/api/artifacts-catalog-client.ts`); the response includes both the visible artifacts **and** the caller's resolved `role`, straight from `artifacts-server`'s own verification — the frontend never computes or stores a role independently.
+3. `useArtifactSrc.ts` builds `http://localhost:3000/<artifact-path>/?token=<the same Supabase access token>` and sets it as the iframe `src` (a query param, not a header, because a plain iframe navigation can't attach `Authorization`).
+4. `artifacts-server` verifies that token via `supabase-service` and checks the resolved role against the manifest exactly as described in §2, and returns the artifact — or a JSON error, which just renders as text inside the frame.
 
-**Persisted-data flow (the `postMessage` bridge):**
-1. The user logs into Supabase through this app's own UI (`SupabaseSessionWidget.tsx`), which posts to `POST /api/supabase/login` (or `/signup`) — a BFF route that calls `supabase-service`'s `/auth/login`. The resulting `{ accessToken, userId, email }` is held in React state (`supabase-session-context.tsx`), never in `localStorage`/cookies.
-2. The artifact's JS posts `{ source: 'artifact-data-bridge', type: 'request', requestId, table, method, id, body, search }` to `window.parent` — it holds no credentials and cannot reach any backend on its own (sandboxed, no `allow-same-origin`, and `connect-src 'none'` blocks any outbound call it might attempt anyway).
-3. `useArtifactDataBridge.ts` validates the sender via `event.source === iframe.contentWindow` (**not** `event.origin`, since a sandboxed iframe's origin is the opaque string `"null"`), then makes the real request itself — `fetch('/api/data/<table>[/<id>][?search]', { headers: { Authorization: Bearer <supabase token>, X-User-Id } })` — using the logged-in user's own session.
-4. `app/api/data/[table]/route.ts` and `[id]/route.ts` are a thin BFF proxy to `supabase-service`'s `/data/:table` endpoints (no CORS — deliberately, as defense-in-depth against any artifact that somehow tried to call them directly).
-5. The result is posted back to the iframe as `{ source: 'artifact-data-bridge', type: 'response', requestId, status, body }`.
+**Persisted-data flow (the `postMessage` bridge)** — unchanged in shape from the token flow above, just now built entirely on the one real Supabase session:
+1. The artifact's JS posts `{ source: 'artifact-data-bridge', type: 'request', requestId, table, method, id, body, search }` to `window.parent` — it holds no credentials and cannot reach any backend on its own (sandboxed, no `allow-same-origin`, and `connect-src 'none'` blocks any outbound call it might attempt anyway).
+2. `useArtifactDataBridge.ts` validates the sender via `event.source === iframe.contentWindow` (**not** `event.origin`, since a sandboxed iframe's origin is the opaque string `"null"`), then makes the real request itself — `fetch('/api/data/<table>[/<id>][?search]', { headers: { Authorization: Bearer <supabase token>, X-User-Id } })` — using the logged-in user's own session.
+3. `app/api/data/[table]/route.ts` and `[id]/route.ts` are a thin BFF proxy to `supabase-service`'s `/data/:table` endpoints (no CORS — deliberately, as defense-in-depth against any artifact that somehow tried to call them directly).
+4. The result is posted back to the iframe as `{ source: 'artifact-data-bridge', type: 'response', requestId, status, body }`.
 
 **Modules:**
-- `lib/config/env.ts` — `getBackendServiceUrl()`, `getArtifactsServerUrl()`, `getAgentServiceUrl()`, `getSupabaseServiceUrl()` (all server-only defaults except the artifacts server URL, which the browser also needs to build the iframe `src`)
-- `lib/api/backend-service-client.ts`, `lib/api/supabase-service-client.ts`, `lib/api/agent-service-client.ts`, `lib/api/artifacts-catalog-client.ts` — server-only (`import 'server-only'`) clients for each backend
-- `app/api/token/route.ts`, `app/api/supabase/{login,signup}/route.ts`, `app/api/data/[table]/{route.ts,[id]/route.ts}`, `app/api/artifacts/route.ts`, `app/api/chat/{route.ts,providers/route.ts}` — the BFF routes bridging browser ↔ each backend
+- `lib/config/env.ts` — `getArtifactsServerUrl()` (public — the browser needs it to build the iframe `src`), `getArtifactAgentServiceUrl()`, `getDbAgentServiceUrl()`, `getSupabaseServiceUrl()` (server-only)
+- `lib/api/supabase-service-client.ts`, `lib/api/artifact-agent-service-client.ts`, `lib/api/db-agent-service-client.ts`, `lib/api/artifacts-catalog-client.ts` — server-only (`import 'server-only'`) clients for each backend; `lib/api/catalog-client.ts`, `artifact-chat-client.ts`, `db-chat-client.ts`, `skills-client.ts` — matching browser-side clients that call this app's own BFF routes
+- `app/api/supabase/{login,signup}/route.ts`, `app/api/data/[table]/{route.ts,[id]/route.ts}`, `app/api/artifacts/route.ts`, `app/api/chat-artifact/{route.ts,providers/route.ts}`, `app/api/chat-db/route.ts`, `app/api/skills/{route.ts,[name]/route.ts}` — the BFF routes bridging browser ↔ each backend (there is no `/api/token` route anymore)
 - `lib/supabase/supabase-session-context.tsx` — React context holding the Supabase session, plus `login`/`signUp`/`logout`
 - `hooks/useArtifactDataBridge.ts` — the postMessage mediator described above
-- `hooks/useArtifactToken.ts`, `hooks/useArtifactSrc.ts` — token fetching and iframe `src` construction
-- `components/RoleSwitcher.tsx`, `ArtifactSelector.tsx`, `ArtifactFrame.tsx`, `ArtifactViewer.tsx`, `supabase/SupabaseSessionWidget.tsx` — the UI, composed in `app/page.tsx`
+- `hooks/useArtifactCatalog.ts`, `hooks/useArtifactSrc.ts` — fetches the role-scoped catalog and builds the iframe `src`, both keyed on the Supabase access token directly
+- `components/ArtifactSelector.tsx` (a sidebar list of pages, not a dropdown), `ArtifactFrame.tsx` (accepts a `reloadNonce` prop to force a remount/reload independent of `src`), `ArtifactViewer.tsx` (its sidebar links to both `/chat` and `/db-chat`), `components/supabase/ProfileMenu.tsx` + `SupabaseSessionWidget.tsx` (email/role/logout, opens as a popup from a profile chip — no `RoleSwitcher`, roles are never user-selectable) — composed in `app/page.tsx`
 
 **Iframe sandboxing** (`ArtifactFrame.tsx`) — artifacts are treated as untrusted, potentially AI-generated (and thus potentially adversarial) content:
 - `sandbox="allow-scripts"` **only** — no `allow-same-origin` (the framed document gets a unique opaque origin, so it can't read this app's — or even its own origin's — cookies/storage), no forms, popups, top-navigation, downloads, or modals.
 - No `allow` (Permissions Policy) features are delegated.
 - `referrerPolicy="no-referrer"` — this app's URL is never sent to the artifacts server as a `Referer` header.
-- The iframe is keyed by `src`, so switching role or artifact fully remounts it rather than reusing stale state.
+- The iframe is keyed by `src` plus a `reloadNonce` counter, so switching artifact — or an explicit "⟳ Refresh" click, or a new chat response landing — fully remounts it rather than reusing stale state, even when the URL string itself hasn't changed.
 - `artifacts-server` additionally sends `Content-Security-Policy: connect-src 'none'` on every artifact document, so even outbound network calls the sandbox attribute itself doesn't restrict are blocked at the browser level.
 
-### AI chat page (`/chat`)
+### Artifact Chat page (`/chat`)
 
-Lets a user create or update an artifact by chatting instead of hand-writing HTML. Reuses `RoleSwitcher` and `ArtifactFrame` from the main viewer for the live preview pane — same token flow, same sandboxing.
+Lets a user create or update an artifact by chatting instead of hand-writing HTML, and manage opencode Skills without leaving the page.
 
-- `app/chat/page.tsx` → `components/chat/ChatPage.tsx` — owns the conversation state (`messages`, the target `slug`, selected `provider`, preview `role`)
-- `components/chat/ChatMessageList.tsx`, `ChatComposer.tsx`, `ProviderSelector.tsx` — presentational pieces
-- `lib/chat/types.ts` — the wire types shared between the proxy and the UI
+- `app/chat/page.tsx` → `components/chat/ChatPage.tsx` — owns the conversation state (`messages`, the target `slug`, selected `provider`, selected skills, the live preview pane)
+- `components/chat/ChatMessageList.tsx`, `ChatComposer.tsx`, `ProviderSelector.tsx`, `ExistingArtifactsPanel.tsx` — presentational pieces for the conversation and artifact-switching
+- `components/chat/SkillSelector.tsx` — a row of toggleable chips, one per skill; selections persist across turns until toggled off
+- `components/chat/SkillsPanel.tsx` — inline create/edit/delete UI for skills, calling `/api/skills`; toggled in place of `ExistingArtifactsPanel` by a header button
+- `lib/chat/types.ts`, `lib/skills/types.ts` — the wire types shared between the proxies and the UI
 
-Flow: composer submits → optimistic user message appended → `POST /api/chat` with the full message list, the current `slug` (`null` on the first turn), and the selected provider → `agent-service` returns the assistant's reply plus the artifact's `url_path` → the page adopts the returned `slug`/`url_path` so the *next* message updates the same artifact instead of creating a new one, and the preview pane's iframe reloads against it.
+**Flow:** composer submits → if any skills are selected, the message is rewritten to `Use these skills: "a", "b". <original text>` (visible in the transcript — no hidden text) → optimistic user message appended → `POST /api/chat-artifact` with the full message list, the current `slug` (`null` on the first turn), and the selected provider → `artifact-agent-service` returns the assistant's reply plus the artifact's `url_path` → the page adopts the returned `slug`/`url_path` so the *next* message updates the same artifact instead of creating a new one, and the preview pane's iframe reloads against it (both automatically, after every response, and on demand via the refresh button).
+
+### Database Chat page (`/db-chat`)
+
+Lets a user ask natural-language questions about the data instead of building or reading an artifact — no preview pane, no skills, no artifact `slug`, just a conversation.
+
+- `app/db-chat/page.tsx` → `components/db-chat/DbChatPage.tsx` — owns the conversation state and renders its own message list/composer inline (simple enough not to warrant splitting into the same sub-components as `ChatPage.tsx`)
+- `lib/db-chat/types.ts` — the wire types shared between the proxy and the UI
+- `lib/api/db-chat-client.ts` — browser-side client; sends `POST /api/chat-db` with the message list, carrying the current Supabase session's access token as an `Authorization: Bearer` header (via `useSupabaseSession()`, the same session object every other Supabase-aware part of this app reads from)
+- `app/api/chat-db/route.ts` — the BFF route: extracts that header with `lib/http/data-request-auth.ts` (the same helper `app/api/data/[table]/route.ts` uses) — `401` if missing — then calls `lib/api/db-agent-service-client.ts`'s `chatWithDbAgent(messages, jwt)`, which `POST`s `{ messages, jwt }` to `db-agent-service`'s `/agent/chat-db`
+
+**Flow:** composer submits → optimistic user message appended → `POST /api/chat-db` with the full message list and the caller's Supabase JWT (never the message body — always the `Authorization` header) → `db-agent-service` runs its `query_table`/`write_table` tool loop against `supabase-service` under that same JWT, so every row it can read or change is exactly what RLS allows this caller to → the assistant's reply is appended to the transcript. When the request implies a create/update/delete, that reply is a plain-language description of the intended change asking for confirmation — the same composer is how the user says "yes, go ahead" on the next turn. There's no artifact, no preview pane, and no cross-turn server-side session — each turn just resends the full message list.
 
 ---
 
@@ -245,10 +260,15 @@ Flow: composer submits → optimistic user message appended → `POST /api/chat`
 | Artifact can't make its own network calls (external or internal) | `Content-Security-Policy: connect-src 'none'` on every artifact HTML response |
 | Artifact can't hold or leak a real Supabase/database credential | It never receives one — all data access goes through `postMessage` → `useArtifactDataBridge.ts`, which holds the session and makes the request itself |
 | A forged/spoofed `postMessage` sender | Validated via `event.source === iframe.contentWindow`, not `event.origin` (which is `"null"` for a sandboxed frame either way) |
-| Row-level authorization on actual data | Postgres RLS policies (`auth.uid() = user_id`, etc.) — enforced by Supabase itself against the user's own JWT, not application code |
-| Runtime Supabase access is over-privileged | `supabase-service` uses **only** the anon key, always scoped to the calling user's JWT (`global.headers.Authorization`) |
-| Schema introspection needs a secret key Supabase requires for that endpoint | Isolated to `tool-service`'s `get-schema` tool — generation-time only, never in any runtime artifact/data request path |
-| AI-generated code doesn't know the real schema | The `get_schema` tool (Claude/Gemini tool-calling loop) fetches real table/column names before code is written |
+| Row-level authorization on actual data | Postgres RLS policies (`auth.uid() = id`, etc.) — enforced by Supabase itself against the user's own token, not application code |
+| Runtime Supabase access is over-privileged | `supabase-service` uses **only** the anon key, always scoped to the calling user's token (`global.headers.Authorization`) |
+| A caller's role can't be forged by decoding/trusting the token client-side | `artifacts-server` never inspects the token itself — it always asks `supabase-service`'s `/auth/verify`, the one place that resolves a token to a role via an RLS-scoped DB read |
+| Schema introspection needs a secret key Supabase requires for that endpoint | Isolated to opencode's own `get_schema` tool — generation-time only, never in any runtime artifact/data request path |
+| AI-generated code doesn't know the real schema | The `get_schema` tool fetches real table/column/constraint/enum names before code is written |
+| The database chat agent could see or change more than the asking user is allowed to | `db-agent-service` holds no Supabase key at all — every read and write goes through `supabase-service`'s `/data/:table` under the caller's own JWT (§5), so RLS decides what's actually allowed, not the agent |
+| The database chat agent could leak that RLS-restricted data exists | An RLS-empty result and a genuinely-empty result are indistinguishable at the SQL level by design; `db-agent-service` treats both identically (`SupabaseQueryClient`, §5) and its system prompt explicitly forbids speculating about *why* a result was empty |
+| The database chat agent could write/delete data without the user realizing | `write_table` refuses to run unless called with `confirmed: true`, and the system prompt requires the model to have already explained the exact change and gotten an explicit go-ahead in a prior turn before setting that flag (§5) — this is a workflow gate, not a security one; RLS is still the actual authority on whether the write is allowed |
+| The two chat agents could leak a JWT or bypass each other's boundaries | No shared state between them — `artifact-agent-service` never receives a Supabase JWT at all, and `db-agent-service` never touches the artifacts filesystem, opencode, or any Supabase key |
 
 `services/artifacts-server/artifacts/sandbox-security-test/` is a live artifact that exercises every row in this table (except the RLS/schema ones, which aren't reachable from an artifact by design) and reports pass/fail for each — open it any time to re-verify the sandbox after changing anything here.
 
@@ -260,4 +280,6 @@ See the top-level [README.md](./README.md) for step-by-step setup and run instru
 
 ## Status
 
-Everything above is implemented, builds, typechecks, and lints. Verified end-to-end live against a real Supabase project: token issuance → role-based 200/403/404 responses → sandboxed rendering; tool-service write/read round-trip; the full agent-service → tool-service → artifacts-server chain; the postMessage data bridge performing real CRUD against Supabase through RLS; `get-schema` returning the real `todos` table schema via the secret key held only in `tool-service`; the CSP blocking external/internal fetches from inside the sandboxed iframe. Not yet built: a real identity provider (the token endpoint is explicitly a *dev* stand-in), an artifact publishing/upload flow beyond the agent, and e2e test suites (removed from this workspace for now).
+Everything through §4/§6's Artifact Chat flow is implemented, builds, typechecks, and lints, and was verified end-to-end live against a real Supabase project: signup/login → `/auth/verify` resolving the real role from the `users` table → role-based 200/403/404 responses from `artifacts-server` → sandboxed rendering; the full `artifact-agent-service` (then `agent-service`) → opencode → artifacts-server chain (both creating a new artifact and editing an existing one across turns, including a confirmed session-continuity bug fix — resending full history on top of a live opencode session confused the model into re-validating the original request instead of applying the newest one); the postMessage data bridge performing real CRUD against Supabase through RLS; `get_schema` returning the real database schema, including enum-typed columns' exact allowed values, via the secret key held only by opencode's tool; a Skill created through `/agent/skills` being genuinely discovered and invoked by opencode mid-generation (confirmed via its tool-call event stream, not just that the file was theoretically visible); the CSP blocking external/internal fetches from inside the sandboxed iframe.
+
+`db-agent-service` (§5) and the Database Chat page (§6) are newer, and have now been verified live against the real Supabase project directly through `/agent/chat-db` (not yet through the Next.js UI itself): a read question resolving real `products` rows through RLS; a create request correctly stopping to explain the exact row it intended to insert and ask for confirmation *before* touching the database; the same create actually executing, and the row appearing in Supabase, only after a follow-up message confirmed it. That first live test also caught a real bug worth recording — `packages/sql/01_create_tables.sql`'s schema doesn't match what's actually deployed, so `schema-context.ts` was originally wrong and every query failed with a generic "I ran into a problem" reply; see the note in §5. Not yet built: an artifact publishing/upload flow beyond the agent, and e2e test suites (removed from this workspace for now).

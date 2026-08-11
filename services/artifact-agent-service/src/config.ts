@@ -26,8 +26,9 @@ export interface AppConfig {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const serviceRoot = resolve(__dirname, '..');
   return {
-    port: Number(env.PORT) || 5002,
-    artifactsServerUrl: env.ARTIFACTS_SERVER_URL || 'http://localhost:3000',
+    // 5002 collided with another service already running on the same host — 5102 avoids it.
+    port: Number(env.PORT) || 5102,
+    artifactsServerUrl: env.ARTIFACTS_SERVER_URL || 'http://localhost:3400',
 
     defaultProvider: env.LLM_PROVIDER || 'gemini',
     anthropicModel: env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL,
@@ -43,7 +44,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     // A complex multi-screen artifact (role-based dashboards, several
     // tables/forms) can legitimately take 3-5+ minutes — this default gives
     // both this service and Node's fetch on the Next.js side real headroom
-    // (see agent-service-client.ts).
+    // (see artifact-agent-service-client.ts).
     opencodeTimeoutMs: (Number(env.OPENCODE_TIMEOUT_SECONDS) || 900) * 1000,
   };
 }

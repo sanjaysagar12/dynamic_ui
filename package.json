@@ -2,7 +2,9 @@
   "name": "@org/source",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {},
+  "scripts": {
+    "dev": "concurrently -n supabase,artifacts,artifact-agent,db-agent,viewer -c blue,green,yellow,magenta,cyan \"nx run supabase-service:serve\" \"nx run artifacts-server:serve\" \"nx run artifact-agent-service:serve\" \"nx run db-agent-service:serve\" \"nx run artifacts-viewer:dev\""
+  },
   "private": true,
   "dependencies": {
     "@supabase/supabase-js": "^2.110.7",
@@ -42,6 +44,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "babel-jest": "~30.3.0",
+    "concurrently": "^10.0.4",
     "eslint": "^9.8.0",
     "eslint-config-next": "^16.1.6",
     "eslint-config-prettier": "^10.0.0",

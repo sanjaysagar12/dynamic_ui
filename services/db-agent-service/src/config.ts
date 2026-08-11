@@ -17,7 +17,8 @@ export interface AppConfig {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
-    port: Number(env.PORT) || 5003,
+    // 5003 collided with another service already running on the same host — 5103 avoids it.
+    port: Number(env.PORT) || 5103,
     supabaseServiceUrl: env.SUPABASE_SERVICE_URL || 'http://localhost:3335',
     // This is the only credential this service holds — it authenticates
     // this process to Anthropic, not to Supabase. Every Supabase read still

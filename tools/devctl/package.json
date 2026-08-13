@@ -1,0 +1,40 @@
+{
+  "name": "@org/devctl",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "nx": {
+    "name": "devctl",
+    "targets": {
+      "build": {
+        "cache": true,
+        "executor": "nx:run-commands",
+        "outputs": ["{projectRoot}/dist"],
+        "options": {
+          "cwd": "tools/devctl",
+          "command": "tsc -p tsconfig.app.json"
+        }
+      },
+      "serve": {
+        "continuous": true,
+        "executor": "nx:run-commands",
+        "dependsOn": ["build"],
+        "options": {
+          "cwd": "tools/devctl",
+          "command": "node dist/main.js"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "cross-spawn": "^7.0.6",
+    "ink": "^7.1.1",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.0.0",
+    "tree-kill": "^1.2.2"
+  },
+  "devDependencies": {
+    "@types/cross-spawn": "^6.0.6",
+    "@types/react": "^19.0.0"
+  }
+}

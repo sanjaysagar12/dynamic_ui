@@ -20,6 +20,9 @@
     },
     {
       "path": "./services/db-agent-service"
+    },
+    {
+      "path": "./tools/devctl"
     }
   ],
   "compilerOptions": {

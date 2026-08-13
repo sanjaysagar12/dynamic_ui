@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "dev": "concurrently -n supabase,artifacts,artifact-agent,db-agent,viewer -c blue,green,yellow,magenta,cyan \"nx run supabase-service:serve\" \"nx run artifacts-server:serve\" \"nx run artifact-agent-service:serve\" \"nx run db-agent-service:serve\" \"nx run artifacts-viewer:dev\""
+    "dev": "concurrently -n supabase,artifacts,artifact-agent,db-agent,viewer -c blue,green,yellow,magenta,cyan \"nx run supabase-service:serve\" \"nx run artifacts-server:serve\" \"nx run artifact-agent-service:serve\" \"nx run db-agent-service:serve\" \"nx run artifacts-viewer:dev\"",
+    "devctl": "nx run devctl:serve"
   },
   "private": true,
   "dependencies": {
@@ -72,6 +73,7 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "services/*"
+    "services/*",
+    "tools/*"
   ]
 }

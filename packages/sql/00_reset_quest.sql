@@ -43,7 +43,20 @@ drop table if exists settings             cascade;
 drop table if exists parties              cascade;
 drop table if exists users                cascade;
 
--- ── 3. Functions (guard triggers, balance engine, RLS helpers) ────────
+-- ── 3. Privileges granted by 03_rls_quest.sql's "Base privileges" step ─
+-- Table-level grants and function EXECUTE grants disappear on their own
+-- when the objects they're attached to are dropped below/above — but
+-- schema-level USAGE and the ALTER DEFAULT PRIVILEGES rule are NOT tied
+-- to any object's lifetime. Left alone, the default-privileges rule in
+-- particular would silently keep granting `authenticated` access to
+-- whatever this same role creates in `public` next, even after
+-- everything else here is gone — exactly the kind of debris this file
+-- exists to clear.
+alter default privileges in schema public
+  revoke select, insert, update, delete on tables from authenticated;
+revoke usage on schema public from authenticated;
+
+-- ── 4. Functions (guard triggers, balance engine, RLS helpers) ────────
 drop function if exists apply_stock_movement()      cascade;
 drop function if exists guard_count_adjustment()     cascade;
 drop function if exists block_ledger_mutation()      cascade;
@@ -54,7 +67,7 @@ drop function if exists app_role()                   cascade;
 drop function if exists is_owner()                   cascade;
 drop function if exists is_authenticated_staff()     cascade;
 
--- ── 4. Enums ────────────────────────────────────────────────────────
+-- ── 5. Enums ────────────────────────────────────────────────────────
 drop type if exists po_status          cascade;
 drop type if exists movement_direction cascade;
 drop type if exists movement_type      cascade;

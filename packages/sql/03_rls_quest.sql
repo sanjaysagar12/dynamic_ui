@@ -69,6 +69,39 @@ as $$
   select app_role() is not null;
 $$;
 
+-- ── 0b. Base privileges ──────────────────────────────────────────────
+-- RLS policies only narrow down rows within an operation Postgres has
+-- already decided the role may attempt — they are NOT a substitute for
+-- the underlying GRANT. A role with no USAGE on this schema (or no
+-- SELECT/INSERT/UPDATE/DELETE on a table) is rejected before RLS is
+-- ever consulted, surfacing as "permission denied for schema public" /
+-- "permission denied for relation <table>" instead of an empty result
+-- set. `authenticated` is the Postgres role Supabase/PostgREST executes
+-- a logged-in user's queries as (see supabase-service's
+-- createUserScopedClient) — it needs these grants for every policy
+-- above to ever run at all. `anon` is deliberately NOT granted
+-- anything here: sign-up/sign-in go through Supabase's own `auth`
+-- schema, not this one, and every table below requires
+-- is_authenticated_staff() regardless, so an anonymous grant would be
+-- dead weight.
+grant usage on schema public to authenticated;
+
+grant select, insert, update, delete on all tables in schema public to authenticated;
+-- Safe even for append-only tables (stock_movements, audit_events):
+-- they intentionally have no UPDATE/DELETE policy, so RLS still denies
+-- those operations outright — this GRANT only opens the door RLS then
+-- guards, it doesn't override anything above.
+
+-- Lets the helper functions above actually be called by `authenticated`
+-- — normally implicit (EXECUTE defaults to PUBLIC), made explicit here
+-- since everything else in this file is.
+grant execute on function app_user_id(), app_role(), is_owner(), is_authenticated_staff() to authenticated;
+
+-- New tables added later won't inherit the grant above automatically —
+-- this makes anything this same role creates from now on do so too.
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to authenticated;
+
 -- ── 1. Enable RLS everywhere ─────────────────────────────────────────
 alter table users                enable row level security;
 alter table parties              enable row level security;

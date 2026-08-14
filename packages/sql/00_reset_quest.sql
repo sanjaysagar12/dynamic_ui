@@ -81,6 +81,20 @@ drop type if exists uom_type           cascade;
 drop type if exists actor_type         cascade;
 drop type if exists user_role          cascade;
 
+-- ── 6. Schema-introspection RPCs (services/supabase-service/sql/003-005) ─
+-- Not part of the quest schema itself — these are generic, schema-agnostic
+-- catalog readers (opencode's get_schema tool, db-agent-service's
+-- SchemaService) that work the same regardless of which app schema is
+-- loaded, so they'd normally survive a reset harmlessly. Dropped here
+-- anyway on request. Re-apply services/supabase-service/sql/
+-- 003_create_table_constraints_rpc.sql, 004_create_enum_values_rpc.sql,
+-- and 005_create_schema_columns_rpc.sql afterward if live schema
+-- introspection is still needed (DROP ... CASCADE already clears their
+-- GRANT EXECUTE privileges — no separate REVOKE needed).
+drop function if exists public.get_table_constraints() cascade;
+drop function if exists public.get_enum_values()        cascade;
+drop function if exists public.get_schema_columns()     cascade;
+
 -- pgcrypto is left installed — it's a shared extension other projects
 -- in this database may depend on. Drop it manually if you're certain
 -- nothing else needs gen_random_uuid():

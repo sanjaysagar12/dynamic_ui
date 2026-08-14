@@ -5,11 +5,13 @@ import { AuthService } from './auth/auth.service.js';
 import { registerAuthRoutes } from './auth/auth.controller.js';
 import { RecordsService } from './data/records.service.js';
 import { registerRecordsRoutes } from './data/records.controller.js';
+import { RpcService } from './data/rpc.service.js';
+import { registerRpcRoutes } from './data/rpc.controller.js';
 import { errorHandler } from './middleware/error-handler.js';
 
 /**
- * Builds (but does not start) the Fastify app: wires the one SupabaseClientFactory into both
- * services, registers every route group, and installs the global error handler. Kept separate
+ * Builds (but does not start) the Fastify app: wires the one SupabaseClientFactory into every
+ * service, registers every route group, and installs the global error handler. Kept separate
  * from main.ts's `.listen()` call so this function alone is enough to exercise the app (e.g.
  * from a test) without binding a real network port.
  *
@@ -17,15 +19,17 @@ import { errorHandler } from './middleware/error-handler.js';
  *   GET  /health              — liveness check, no auth, always 200
  *   /auth/*   (auth.controller.ts)     — signup, login, verify
  *   /data/*   (records.controller.ts) — generic CRUD proxy over any Supabase table
+ *   /rpc/*    (rpc.controller.ts)     — generic proxy over any Postgres function (supabase.rpc)
  */
 export function createApp(config: AppConfig): FastifyInstance {
   const fastify = Fastify();
 
-  // One factory, shared by both services below — it's the single place that knows how to build
+  // One factory, shared by every service below — it's the single place that knows how to build
   // a Supabase client (anon or user-scoped) from this service's config (see supabase-client-factory.ts).
   const clientFactory = new SupabaseClientFactory(config);
   const authService = new AuthService(clientFactory);
   const recordsService = new RecordsService(clientFactory);
+  const rpcService = new RpcService(clientFactory);
 
   // Unauthenticated on purpose — used by process managers / uptime checks / the README's
   // "is this service even running" instructions, so it must never depend on Supabase being
@@ -47,6 +51,13 @@ export function createApp(config: AppConfig): FastifyInstance {
       registerRecordsRoutes(instance, recordsService);
     },
     { prefix: '/data' },
+  );
+
+  fastify.register(
+    async (instance) => {
+      registerRpcRoutes(instance, rpcService);
+    },
+    { prefix: '/rpc' },
   );
 
   // Catches anything a route handler didn't already turn into a response itself (see

@@ -2,8 +2,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { AppConfig } from '../config.js';
 import { DbAgentGenerationError, SupabaseAuthError, SupabaseQueryError } from '../core/errors.js';
 import type { ChatDbRequest, ChatDbResponse } from '../schemas.js';
-import { DB_SCHEMA_CONTEXT } from './schema-context.js';
-import { SupabaseQueryClient } from './supabase-query-client.js';
+import { RLS_BEHAVIOR_GUIDANCE } from './schema-context.js';
+import type { SchemaService } from './schema-service.js';
+import type { SupabaseQueryClient } from './supabase-query-client.js';
 
 const QUERY_TABLE_TOOL: Anthropic.Tool = {
   name: 'query_table',
@@ -58,13 +59,18 @@ const WRITE_TABLE_TOOL: Anthropic.Tool = {
   },
 };
 
-const SYSTEM_PROMPT = `
+/** `schemaDescription` comes from SchemaService.describe() — a live read of the actual deployed
+ *  schema for this turn, not a hand-maintained copy that can drift from reality. */
+function buildSystemPrompt(schemaDescription: string): string {
+  return `
 You are a database assistant for an internal inventory system. You read data with the
 query_table tool, and can create/update/delete rows with the write_table tool. All access is
 scoped to the caller's own Supabase permissions via Row-Level Security; you cannot see or change
 more than they're allowed to, and must never imply otherwise.
 
-${DB_SCHEMA_CONTEXT}
+${schemaDescription}
+
+${RLS_BEHAVIOR_GUIDANCE}
 
 Before ANY create, update, or delete: reply in plain text first, describing precisely what you
 intend to do — the table, the operation, which row (quote identifying details, not just a raw
@@ -80,29 +86,35 @@ an empty read result), tell the user briefly that you ran into a problem, withou
 detail, and don't guess at an outcome. Keep answers concise and grounded only in what the tools
 actually returned.
 `.trim();
+}
 
 export class DbChatService {
   private readonly anthropic: Anthropic;
-  private readonly supabaseQuery: SupabaseQueryClient;
 
-  constructor(private readonly config: AppConfig) {
+  constructor(
+    private readonly config: AppConfig,
+    private readonly supabaseQuery: SupabaseQueryClient,
+    private readonly schemaService: SchemaService,
+  ) {
     if (!config.anthropicApiKey) {
       throw new DbAgentGenerationError('ANTHROPIC_API_KEY is not configured for db-agent-service');
     }
     this.anthropic = new Anthropic({ apiKey: config.anthropicApiKey });
-    this.supabaseQuery = new SupabaseQueryClient(config);
   }
 
   async chat(request: ChatDbRequest): Promise<ChatDbResponse> {
     const model = request.model || this.config.defaultModel;
     const messages: Anthropic.MessageParam[] = request.messages.map((m) => ({ role: m.role, content: m.content }));
+    // Fetched once per turn, cached process-wide inside SchemaService — not re-fetched on every
+    // tool round-trip within this same turn's loop below.
+    const systemPrompt = buildSystemPrompt(await this.schemaService.describe(request.jwt));
 
     let reply = '';
     for (let iteration = 0; iteration < this.config.maxToolIterations; iteration++) {
       // On the last allowed iteration, stop offering tools at all so the model is forced to
       // answer in text instead of requesting yet another round-trip that we won't act on.
       const allowTools = iteration < this.config.maxToolIterations - 1;
-      const response = await this.callAnthropic(model, messages, allowTools);
+      const response = await this.callAnthropic(model, messages, allowTools, systemPrompt);
 
       const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text');
       const toolUses = allowTools ? response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use') : [];
@@ -131,12 +143,17 @@ export class DbChatService {
     };
   }
 
-  private async callAnthropic(model: string, messages: Anthropic.MessageParam[], allowTools: boolean): Promise<Anthropic.Message> {
+  private async callAnthropic(
+    model: string,
+    messages: Anthropic.MessageParam[],
+    allowTools: boolean,
+    systemPrompt: string,
+  ): Promise<Anthropic.Message> {
     try {
       return await this.anthropic.messages.create({
         model,
         max_tokens: 1024,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         tools: allowTools ? [QUERY_TABLE_TOOL, WRITE_TABLE_TOOL] : undefined,
         messages,
       });

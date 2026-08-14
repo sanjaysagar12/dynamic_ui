@@ -71,6 +71,22 @@ export class SupabaseQueryClient {
     await this.request(url, { method: 'DELETE', headers: { Authorization: `Bearer ${jwt}` } });
   }
 
+  /** Calls a Postgres function via supabase-service's /rpc/:function proxy — the only way this
+   *  service can do anything a plain table read/write can't express, e.g. reading Postgres's own
+   *  schema catalogs (see schema-service.ts). Same as every other call here: the caller's own
+   *  JWT, never a service-role key — what the function is actually allowed to do is entirely a
+   *  Postgres-side GRANT/RLS/SECURITY DEFINER decision, not something this client enforces. */
+  async callRpc<T>(jwt: string, fn: string, args: Record<string, unknown> = {}): Promise<T> {
+    const url = new URL(`/rpc/${encodeURIComponent(fn)}`, this.config.supabaseServiceUrl);
+    const response = await this.request(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+    });
+    const body = (await response.json()) as { data?: T };
+    return body.data as T;
+  }
+
   private async request(url: URL, init: RequestInit): Promise<Response> {
     let response: Response;
     try {

@@ -75,6 +75,8 @@ DB_AGENT_MODEL=claude-opus-4-8
 ```
 This service holds no Supabase key of its own — every data read it makes goes through `supabase-service`'s `/data/:table`, carrying the caller's own Supabase access token (passed in on each `/agent/chat-db` request) as the `Authorization` header. That's what keeps Row-Level Security enforced per-user instead of this agent seeing everything.
 
+**One-time Supabase setup — schema-introspection RPCs** *(required for the database agent to know real table/column names; without them it degrades to asking you what table you mean instead of guessing)*: paste `services/supabase-service/sql/003_create_table_constraints_rpc.sql`, `004_create_enum_values_rpc.sql`, and `005_create_schema_columns_rpc.sql` into your Supabase project's **SQL Editor** and run them once. All three are `create or replace function`, so safe to re-run. They're `SECURITY DEFINER` Postgres functions granted to `anon`/`authenticated` — callable with the anon key alone, no secret key needed — that let `db-agent-service` read the live schema (`db-agent-service`'s `SchemaService`) the same way `artifact-agent-service`'s `get_schema` tool does, just without the secret key that tool is allowed to hold and this service deliberately isn't.
+
 **`apps/artifacts-viewer/.env.local`** *(optional — only needed if a backend service isn't on its default `localhost` port, e.g. in a real deployment)*
 ```
 ARTIFACTS_SERVER_URL=http://localhost:3400

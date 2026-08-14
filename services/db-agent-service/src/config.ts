@@ -13,6 +13,11 @@ export interface AppConfig {
   // Caps how many query_table tool round-trips a single chat turn can make,
   // so a confused model can't loop against supabase-service forever.
   maxToolIterations: number;
+  // How long a live schema lookup (schema-service.ts) is trusted before being re-fetched.
+  // Short enough that a real schema change (new table/column) shows up on its own within a
+  // few minutes, without needing a code change/redeploy — long enough that a normal chat
+  // session's several turns don't each pay for three extra Supabase round-trips.
+  schemaCacheTtlMs: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -28,5 +33,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     anthropicApiKey: env.ANTHROPIC_API_KEY || '',
     defaultModel: env.DB_AGENT_MODEL || DEFAULT_MODEL,
     maxToolIterations: Number(env.DB_AGENT_MAX_TOOL_ITERATIONS) || 6,
+    schemaCacheTtlMs: (Number(env.DB_AGENT_SCHEMA_CACHE_TTL_SECONDS) || 300) * 1000,
   };
 }

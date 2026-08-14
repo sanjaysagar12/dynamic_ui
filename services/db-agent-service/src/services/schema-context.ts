@@ -1,22 +1,9 @@
-// A static description of the known Supabase schema — the only schema knowledge this agent has.
-// Unlike opencode's get_schema tool (services/artifacts-server/artifacts/.opencode/tool/get_schema.ts),
-// this service is never given a Supabase secret key, so it can't introspect the schema live at
-// request time; it only ever reads/writes through supabase-service under the caller's own JWT.
-//
-// NOTE: packages/sql/*.sql describes a much larger aspirational ERP schema (materials, jobs,
-// purchase_orders, etc.) that is NOT what's actually deployed on this project's live Supabase
-// instance — querying those table names fails with "Could not find the table in the schema
-// cache". The listing below was captured directly from the live project's PostgREST OpenAPI
-// document (the same source get_schema.ts reads), not from packages/sql. Keep this in sync by
-// hand if the live schema changes.
-export const DB_SCHEMA_CONTEXT = `
-Known tables and their columns (all in the public schema; column names are case-sensitive):
-
-- users(id, full_name, role["OWNER"|"STOREKEEPER"], created_at)
-- categories(id, name, created_at)
-- products(id, sku, name, category_id -> categories.id, quantity, unit_price, created_by -> users.id, created_at, updated_at)
-- stock_transactions(id, product_id -> products.id, change_qty, reason, performed_by -> users.id, created_at)
-
+// Behavioral guidance for the system prompt that has nothing to do with *which* tables/columns
+// exist — that part is fetched live per request by schema-service.ts, not hand-maintained here.
+// This file used to also hold a static table listing; it drifted from the real live schema
+// (packages/sql/01_create_tables.sql describes a schema that was never actually deployed) and
+// broke every query until that was caught by hand — see SchemaService's own doc comment.
+export const RLS_BEHAVIOR_GUIDANCE = `
 Every table has Row-Level Security enabled. The caller's own Supabase role (OWNER or
 STOREKEEPER) determines what rows they can actually see or change — you are never told which
 role the caller has, and you must not guess or ask. Query/write normally; Postgres silently

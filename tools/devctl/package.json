@@ -3,6 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.app.json",
+    "start": "node dist/main.js"
+  },
   "nx": {
     "name": "devctl",
     "targets": {

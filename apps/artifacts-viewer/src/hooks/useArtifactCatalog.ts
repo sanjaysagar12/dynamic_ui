@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { fetchArtifactCatalog, CatalogRequestError } from '../lib/api/catalog-client';
 import type { ArtifactCatalogEntry } from '../lib/artifacts/types';
 
@@ -10,6 +10,8 @@ export interface UseArtifactCatalogResult {
   role: string | null;
   loading: boolean;
   error: string | null;
+  /** Re-fetches the catalog on demand, e.g. after deleting an artifact — without a full page reload. */
+  refetch: () => void;
 }
 
 /** Fetches the artifacts visible to the current session, refetching whenever the access token changes. */
@@ -18,6 +20,7 @@ export function useArtifactCatalog(accessToken: string | null): UseArtifactCatal
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     if (!accessToken) {
@@ -47,7 +50,9 @@ export function useArtifactCatalog(accessToken: string | null): UseArtifactCatal
       });
 
     return () => controller.abort();
-  }, [accessToken]);
+  }, [accessToken, reloadNonce]);
 
-  return { artifacts, role, loading, error };
+  const refetch = useCallback(() => setReloadNonce((n) => n + 1), []);
+
+  return { artifacts, role, loading, error, refetch };
 }

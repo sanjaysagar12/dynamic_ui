@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useSupabaseSession } from '../lib/supabase/supabase-session-context';
 import { useArtifactCatalog } from '../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../hooks/useArtifactSrc';
+import { deleteArtifactRequest, renameArtifactRequest, CatalogRequestError } from '../lib/api/catalog-client';
+import type { ArtifactCatalogEntry } from '../lib/artifacts/types';
 import { ArtifactSelector } from './ArtifactSelector';
 import { ArtifactFrame } from './ArtifactFrame';
 import { SupabaseSessionWidget } from './supabase/SupabaseSessionWidget';
@@ -15,7 +17,8 @@ export function ArtifactViewer() {
   const token = session?.accessToken ?? null;
   const [artifactPath, setArtifactPath] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
-  const { artifacts, role, loading: catalogLoading, error: catalogError } = useArtifactCatalog(token);
+  const [manageError, setManageError] = useState<string | null>(null);
+  const { artifacts, role, loading: catalogLoading, error: catalogError, refetch } = useArtifactCatalog(token);
   const artifactSrc = useArtifactSrc(artifactPath, token);
 
   useEffect(() => {
@@ -25,6 +28,33 @@ export function ArtifactViewer() {
       setArtifactPath(artifacts.length > 0 ? `/${artifacts[0].slug}/` : '');
     }
   }, [artifacts, catalogLoading, artifactPath]);
+
+  const handleRename = async (artifact: ArtifactCatalogEntry) => {
+    if (!token) return;
+    const nextTitle = window.prompt('Rename artifact', artifact.title)?.trim();
+    if (!nextTitle || nextTitle === artifact.title) return;
+
+    setManageError(null);
+    try {
+      await renameArtifactRequest(artifact.slug, nextTitle, token);
+      refetch();
+    } catch (err) {
+      setManageError(err instanceof CatalogRequestError ? err.message : 'Failed to rename artifact');
+    }
+  };
+
+  const handleDelete = async (artifact: ArtifactCatalogEntry) => {
+    if (!token) return;
+    if (!window.confirm(`Delete "${artifact.title}"? This can't be undone.`)) return;
+
+    setManageError(null);
+    try {
+      await deleteArtifactRequest(artifact.slug, token);
+      refetch();
+    } catch (err) {
+      setManageError(err instanceof CatalogRequestError ? err.message : 'Failed to delete artifact');
+    }
+  };
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: theme.color.bg }}>
@@ -53,10 +83,18 @@ export function ArtifactViewer() {
             Pages
           </span>
           {token ? (
-            <ArtifactSelector artifacts={artifacts} artifactPath={artifactPath} onChange={setArtifactPath} />
+            <ArtifactSelector
+              artifacts={artifacts}
+              artifactPath={artifactPath}
+              onChange={setArtifactPath}
+              onRename={handleRename}
+              onDelete={handleDelete}
+              canManage={role === 'OWNER'}
+            />
           ) : (
             <span style={{ color: theme.color.textMuted, fontSize: '0.9rem' }}>Log in to see available pages.</span>
           )}
+          {manageError && <p style={{ color: theme.color.danger, fontSize: '0.8rem', margin: 0 }}>{manageError}</p>}
         </div>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>

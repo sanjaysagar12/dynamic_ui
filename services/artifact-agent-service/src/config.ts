@@ -5,7 +5,7 @@ loadDotenv({ path: resolve(__dirname, '../.env') });
 
 export type Provider = 'claude' | 'gemini';
 
-export const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-4-8';
+export const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-5';
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
 // Maps the public Provider literal to the prefix opencode expects in its

@@ -2,7 +2,13 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./out-tsc/jest",
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    // Explicit because ts-jest's language-service host otherwise infers rootDir from just the
+    // files touched by a given test run — fine while every spec's imports stay inside src/services,
+    // but form-spec-builder.spec.ts pulls in ../schemas.ts too, which composite mode then rejects
+    // as outside the (too-narrow) inferred root. "." covers the whole project (src/schemas.ts and
+    // src/services/*.ts alike) regardless of which files a given test actually imports.
+    "rootDir": "."
   },
   "include": [
     "jest.config.ts",

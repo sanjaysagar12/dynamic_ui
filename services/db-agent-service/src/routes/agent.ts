@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppConfig } from '../config.js';
-import { DbAgentGenerationError, SupabaseAuthError } from '../core/errors.js';
-import { parseChatDbRequest, ValidationError } from '../schemas.js';
+import { DbAgentGenerationError, SupabaseAuthError, SupabaseQueryError } from '../core/errors.js';
+import { parseChatDbRequest, parseSubmitFormRequest, ValidationError } from '../schemas.js';
 import { DbChatService } from '../services/db-chat-service.js';
+import type { FormCommitService } from '../services/form-commit-service.js';
 import type { SchemaService } from '../services/schema-service.js';
 import type { SupabaseQueryClient } from '../services/supabase-query-client.js';
 
@@ -11,6 +12,7 @@ export function registerAgentRoutes(
   config: AppConfig,
   supabaseQuery: SupabaseQueryClient,
   schemaService: SchemaService,
+  formCommitService: FormCommitService,
 ): void {
   fastify.post('/agent/chat-db', async (request, reply) => {
     let parsed;
@@ -36,6 +38,35 @@ export function registerAgentRoutes(
       }
       if (err instanceof DbAgentGenerationError) {
         return reply.code(502).send({ detail: err.message });
+      }
+      throw err;
+    }
+  });
+
+  fastify.post('/agent/submit-form', async (request, reply) => {
+    let parsed;
+    try {
+      parsed = parseSubmitFormRequest(request.body);
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        return reply.code(422).send({ detail: err.message });
+      }
+      throw err;
+    }
+
+    try {
+      return await formCommitService.submit(parsed);
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        // Required/unknown-field validation failed server-side — the real gate, client-side
+        // validation is only a UX convenience.
+        return reply.code(422).send({ detail: err.message });
+      }
+      if (err instanceof SupabaseAuthError) {
+        return reply.code(401).send({ detail: err.message });
+      }
+      if (err instanceof SupabaseQueryError) {
+        return reply.code(err.status).send({ detail: err.message });
       }
       throw err;
     }

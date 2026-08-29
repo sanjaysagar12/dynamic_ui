@@ -53,7 +53,7 @@ Get these from your Supabase project's **Settings → API**. This service never 
 ```
 LLM_PROVIDER=gemini
 GEMINI_MODEL=gemini-2.5-flash
-ANTHROPIC_MODEL=claude-opus-4-8
+ANTHROPIC_MODEL=claude-sonnet-5
 ARTIFACTS_SERVER_URL=http://localhost:3400
 PORT=5102
 
@@ -71,7 +71,7 @@ SUPABASE_SECRET_KEY=<your secret/service-role key>
 PORT=5103
 SUPABASE_SERVICE_URL=http://localhost:3335
 ANTHROPIC_API_KEY=<your Anthropic API key>
-DB_AGENT_MODEL=claude-opus-4-8
+DB_AGENT_MODEL=claude-sonnet-5
 ```
 This service holds no Supabase key of its own — every data read it makes goes through `supabase-service`'s `/data/:table`, carrying the caller's own Supabase access token (passed in on each `/agent/chat-db` request) as the `Authorization` header. That's what keeps Row-Level Security enforced per-user instead of this agent seeing everything.
 

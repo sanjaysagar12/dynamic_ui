@@ -1,6 +1,6 @@
 import 'server-only';
 import { getDbAgentServiceUrl } from '../config/env';
-import type { DbChatMessage, DbChatResponsePayload } from '../db-chat/types';
+import type { DbChatMessage, DbChatResponsePayload, SubmitFormRequestPayload } from '../db-chat/types';
 
 export class DbAgentServiceError extends Error {
   constructor(message: string, readonly status: number) {
@@ -22,6 +22,24 @@ export async function chatWithDbAgent(messages: DbChatMessage[], jwt: string): P
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages, jwt }),
+    cache: 'no-store',
+    signal: AbortSignal.timeout(60_000),
+  });
+
+  if (!response.ok) {
+    throw new DbAgentServiceError(await parseErrorDetail(response), response.status);
+  }
+
+  return response.json();
+}
+
+/** Commits a write built from a form the user filled in and confirmed — see
+ *  db-agent-service's POST /agent/submit-form. Same JWT-forwarding pattern as chatWithDbAgent. */
+export async function submitFormWithDbAgent(payload: SubmitFormRequestPayload, jwt: string): Promise<DbChatResponsePayload> {
+  const response = await fetch(new URL('/agent/submit-form', getDbAgentServiceUrl()), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload, jwt }),
     cache: 'no-store',
     signal: AbortSignal.timeout(60_000),
   });

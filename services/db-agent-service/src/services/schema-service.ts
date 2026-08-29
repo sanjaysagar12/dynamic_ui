@@ -1,7 +1,7 @@
 import type { AppConfig } from '../config.js';
 import type { SupabaseQueryClient } from './supabase-query-client.js';
 
-interface ColumnRow {
+export interface ColumnRow {
   table_name: string;
   column_name: string;
   data_type: string;
@@ -11,16 +11,24 @@ interface ColumnRow {
   ordinal_position: number;
 }
 
-interface ConstraintRow {
+export interface ConstraintRow {
   table_name: string;
   constraint_name: string;
   constraint_type: string;
   definition: string;
 }
 
-interface EnumRow {
+export interface EnumRow {
   enum_name: string;
   enum_value: string;
+}
+
+/** Raw, still-structured schema data for a single table — what form-spec-builder.ts needs to
+ *  build a FormSpec. A subset of the same rows describe()'s cache already holds; see getTableInfo. */
+export interface TableSchemaInfo {
+  columns: ColumnRow[];
+  constraints: ConstraintRow[];
+  enums: EnumRow[];
 }
 
 const FALLBACK_DESCRIPTION =
@@ -48,8 +56,16 @@ const FALLBACK_DESCRIPTION =
  * rather than per-user or per-request — short enough to notice a real schema change on its own
  * within a few minutes, long enough that an ordinary multi-turn chat doesn't re-fetch it every turn.
  */
+interface Cache {
+  description: string;
+  columns: ColumnRow[];
+  constraints: ConstraintRow[];
+  enums: EnumRow[];
+  expiresAt: number;
+}
+
 export class SchemaService {
-  private cached: { description: string; expiresAt: number } | null = null;
+  private cached: Cache | null = null;
 
   constructor(
     private readonly supabaseQuery: SupabaseQueryClient,
@@ -57,8 +73,28 @@ export class SchemaService {
   ) {}
 
   async describe(jwt: string): Promise<string> {
+    const cache = await this.ensureCache(jwt);
+    return cache?.description ?? FALLBACK_DESCRIPTION;
+  }
+
+  /** Structured schema data for a single table — what form-spec-builder.ts needs to build a
+   *  FormSpec. Shares the exact same cache/fetch path describe() uses, so calling this after (or
+   *  before) describe() in the same turn doesn't trigger a second round of RPC calls. */
+  async getTableInfo(jwt: string, table: string): Promise<TableSchemaInfo> {
+    const cache = await this.ensureCache(jwt);
+    if (!cache) {
+      return { columns: [], constraints: [], enums: [] };
+    }
+    return {
+      columns: cache.columns.filter((c) => c.table_name === table),
+      constraints: cache.constraints.filter((c) => c.table_name === table),
+      enums: cache.enums,
+    };
+  }
+
+  private async ensureCache(jwt: string): Promise<Cache | null> {
     if (this.cached && this.cached.expiresAt > Date.now()) {
-      return this.cached.description;
+      return this.cached;
     }
 
     let columns: ColumnRow[];
@@ -67,7 +103,7 @@ export class SchemaService {
     } catch (err) {
       console.error('SchemaService.describe: get_schema_columns failed, serving fallback:', err);
       // Serve a stale-but-real cache over the generic fallback if we have one.
-      return this.cached?.description ?? FALLBACK_DESCRIPTION;
+      return this.cached;
     }
 
     // Constraints and enum values are enrichment, not the core listing — degrade quietly (empty)
@@ -85,9 +121,9 @@ export class SchemaService {
     ]);
 
     const description = formatSchema(columns, constraints, enums);
-    this.cached = { description, expiresAt: Date.now() + this.config.schemaCacheTtlMs };
+    this.cached = { description, columns, constraints, enums, expiresAt: Date.now() + this.config.schemaCacheTtlMs };
     console.log(`SchemaService.describe: refreshed live schema (${columns.length} column row(s) across the public schema)`);
-    return description;
+    return this.cached;
   }
 }
 

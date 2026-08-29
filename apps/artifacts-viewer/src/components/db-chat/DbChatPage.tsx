@@ -5,14 +5,16 @@ import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { useSupabaseSession } from '../../lib/supabase/supabase-session-context';
 import { sendDbChatMessage, DbChatRequestError } from '../../lib/api/db-chat-client';
-import type { DbChatMessage } from '../../lib/db-chat/types';
+import type { DbChatMessage, FormSpec } from '../../lib/db-chat/types';
 import { SupabaseSessionWidget } from '../supabase/SupabaseSessionWidget';
+import { FormRequestCard } from './FormRequestCard';
 import { theme } from '../../lib/ui/theme';
 
 export function DbChatPage() {
   const { session } = useSupabaseSession();
   const token = session?.accessToken ?? null;
   const [messages, setMessages] = useState<DbChatMessage[]>([]);
+  const [pendingForm, setPendingForm] = useState<FormSpec | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState('');
@@ -27,12 +29,16 @@ export function DbChatPage() {
     setValue('');
     setPending(true);
     setError(null);
+    setPendingForm(null);
 
     try {
       // The Supabase JWT travels with every turn (via sendDbChatMessage's Authorization
       // header) — it's what lets supabase-service enforce RLS as this user, not as an admin.
       const response = await sendDbChatMessage(nextMessages, token);
       setMessages(response.messages);
+      if (response.type === 'form_request') {
+        setPendingForm(response.form);
+      }
     } catch (err) {
       setError(err instanceof DbChatRequestError ? err.message : 'Failed to reach the database agent');
     } finally {
@@ -105,6 +111,18 @@ export function DbChatPage() {
             <div style={{ alignSelf: 'flex-start', color: theme.color.textMuted, padding: '0.6rem 0.85rem', fontSize: '0.9rem', fontStyle: 'italic' }}>
               Looking that up…
             </div>
+          )}
+          {pendingForm && token && (
+            <FormRequestCard
+              form={pendingForm}
+              messages={messages}
+              token={token}
+              onDone={(nextMessages) => {
+                setMessages(nextMessages);
+                setPendingForm(null);
+              }}
+              onCancel={() => setPendingForm(null)}
+            />
           )}
         </div>
 

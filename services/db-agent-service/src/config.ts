@@ -3,7 +3,7 @@ import { config as loadDotenv } from 'dotenv';
 
 loadDotenv({ path: resolve(__dirname, '../.env') });
 
-export const DEFAULT_MODEL = 'claude-opus-4-8';
+export const DEFAULT_MODEL = 'claude-sonnet-5';
 
 export interface AppConfig {
   port: number;

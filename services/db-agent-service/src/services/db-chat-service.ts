@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AppConfig } from '../config.js';
 import { DbAgentGenerationError, SupabaseAuthError, SupabaseQueryError } from '../core/errors.js';
-import type { ChatDbRequest, ChatDbResponse } from '../schemas.js';
+import type { ChatDbRequest, ChatDbResponse, FormSpec } from '../schemas.js';
+import { buildFormSpec } from './form-spec-builder.js';
 import { RLS_BEHAVIOR_GUIDANCE } from './schema-context.js';
 import type { SchemaService } from './schema-service.js';
 import type { SupabaseQueryClient } from './supabase-query-client.js';
@@ -32,24 +33,21 @@ const QUERY_TABLE_TOOL: Anthropic.Tool = {
 const WRITE_TABLE_TOOL: Anthropic.Tool = {
   name: 'write_table',
   description:
-    'Create, update, or delete a single row, scoped to the caller\'s own Supabase permissions ' +
-    '(Row-Level Security) — a write the caller isn\'t allowed to make is rejected the same way an ' +
-    'unauthorized API call would be. This is destructive/irreversible: you MUST NOT call this tool ' +
-    'until you have first replied in plain text explaining exactly what you are about to do — the ' +
-    'table, the operation, which row (for update/delete), and the field values involved — and the ' +
-    'user has clearly replied confirming that specific action in a later message. Only set ' +
-    '`confirmed: true` once that has actually happened; the tool refuses the call otherwise.',
+    'Delete a single row, scoped to the caller\'s own Supabase permissions (Row-Level Security) ' +
+    '— a write the caller isn\'t allowed to make is rejected the same way an unauthorized API ' +
+    'call would be. Do NOT use this tool for create or update — call request_form for those so ' +
+    'the user sees and fills a proper form instead of a value you guessed or parsed from prose. ' +
+    'This is destructive/irreversible: you MUST NOT call this tool until you have first replied ' +
+    'in plain text explaining exactly what you are about to do — the table, the operation, and ' +
+    'which row — and the user has clearly replied confirming that specific action in a later ' +
+    'message. Only set `confirmed: true` once that has actually happened; the tool refuses the ' +
+    'call otherwise.',
   input_schema: {
     type: 'object',
     properties: {
-      operation: { type: 'string', enum: ['create', 'update', 'delete'] },
+      operation: { type: 'string', enum: ['delete'] },
       table: { type: 'string', description: 'Exact table name, e.g. "products".' },
-      id: { type: 'string', description: 'Row id — required for update and delete, omitted for create.' },
-      fields: {
-        type: 'object',
-        description: 'Column values to set — required for create and update, omitted for delete.',
-        additionalProperties: true,
-      },
+      id: { type: 'string', description: 'Row id to delete.' },
       confirmed: {
         type: 'boolean',
         description: 'Must be true, and must only be true after the user explicitly confirmed this exact action in their own message.',
@@ -59,32 +57,84 @@ const WRITE_TABLE_TOOL: Anthropic.Tool = {
   },
 };
 
+const REQUEST_FORM_TOOL: Anthropic.Tool = {
+  name: 'request_form',
+  description:
+    'Ask the user to fill in (or confirm) the fields for an insert or update through a ' +
+    'schema-driven form rendered in the chat, instead of guessing a value or asking a free-text ' +
+    'follow-up question. Call this whenever the user\'s request implies creating or updating a ' +
+    'row and any field is missing or ambiguous — and still call it, with every value already ' +
+    'known filled into known_values, even when nothing is missing, so the user sees and confirms ' +
+    'exactly what will be written before it happens. This ends your turn; the actual write only ' +
+    'happens if and when the user submits that form, through a separate endpoint you are not ' +
+    'involved in — do not also call write_table for the same change.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      table: { type: 'string', description: 'Exact table name, e.g. "products".' },
+      operation: { type: 'string', enum: ['insert', 'update'] },
+      match: {
+        type: 'object',
+        description: 'Required for update: { "id": "<row id>" }. Identify the row via query_table first — never guess an id.',
+        properties: { id: { type: 'string' } },
+      },
+      intro: {
+        type: 'string',
+        description: 'One short sentence shown above the form explaining what it is for, e.g. "Let\'s add the new product."',
+      },
+      fields: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Real column names relevant to this write. Any column that is required (NOT NULL, no ' +
+          'default) is always included even if you omit it here, so you do not need to enumerate ' +
+          'every required column yourself — just the ones worth showing for this specific change.',
+      },
+      known_values: {
+        type: 'object',
+        description:
+          'Values already confidently known from the conversation or a related record — becomes ' +
+          'that field\'s prefilled default. Leave a field out entirely rather than guess.',
+        additionalProperties: true,
+      },
+    },
+    required: ['table', 'operation', 'intro'],
+  },
+};
+
 /** `schemaDescription` comes from SchemaService.describe() — a live read of the actual deployed
  *  schema for this turn, not a hand-maintained copy that can drift from reality. */
 function buildSystemPrompt(schemaDescription: string): string {
   return `
 You are a database assistant for an internal inventory system. You read data with the
-query_table tool, and can create/update/delete rows with the write_table tool. All access is
-scoped to the caller's own Supabase permissions via Row-Level Security; you cannot see or change
-more than they're allowed to, and must never imply otherwise.
+query_table tool. All access is scoped to the caller's own Supabase permissions via Row-Level
+Security; you cannot see or change more than they're allowed to, and must never imply otherwise.
 
 ${schemaDescription}
 
 ${RLS_BEHAVIOR_GUIDANCE}
 
-Before ANY create, update, or delete: reply in plain text first, describing precisely what you
-intend to do — the table, the operation, which row (quote identifying details, not just a raw
-id, when you have them), and the exact field values — and ask the user to confirm. Do not call
-write_table in that same turn. Only call write_table, with confirmed: true, after the user's own
-later message clearly agrees to that specific action; if their reply is ambiguous or changes the
-request, describe the (possibly updated) plan again and wait for another explicit confirmation.
-Never chain multiple writes off of one confirmation — each distinct write needs its own
-explanation and its own confirmation.
+When the user's request implies inserting or updating a row and any relevant field is missing or
+ambiguous, call request_form rather than asking a free-text follow-up question or guessing a
+value — never invent a value for a field the user hasn't given you. If every field the write
+needs is already known with certainty from the conversation, still call request_form (with
+known_values covering all of them) so the user sees and explicitly confirms exactly what will be
+written, rather than it happening silently. The write itself only happens if the user submits
+that form — you are not involved in that step and must not also call write_table for the same
+change.
 
-If a query_table or write_table call fails with a genuine error (marked is_error, distinct from
-an empty read result), tell the user briefly that you ran into a problem, without technical
-detail, and don't guess at an outcome. Keep answers concise and grounded only in what the tools
-actually returned.
+write_table is for deleting a row only. Before calling it: reply in plain text first, describing
+precisely what you intend to do — the table and which row (quote identifying details, not just a
+raw id, when you have them) — and ask the user to confirm. Do not call write_table in that same
+turn. Only call it, with confirmed: true, after the user's own later message clearly agrees to
+that specific action; if their reply is ambiguous or changes the request, describe the (possibly
+updated) plan again and wait for another explicit confirmation. Never chain multiple writes off
+of one confirmation — each distinct write needs its own explanation and its own confirmation.
+
+If a query_table, write_table, or request_form call fails with a genuine error (marked is_error,
+distinct from an empty read result), tell the user briefly that you ran into a problem, without
+technical detail, and don't guess at an outcome. Keep answers concise and grounded only in what
+the tools actually returned.
 `.trim();
 }
 
@@ -124,6 +174,34 @@ export class DbChatService {
         break;
       }
 
+      // request_form ends the turn the moment it succeeds — the conversation must pause for the
+      // user to actually fill and submit the form (a separate endpoint), not keep looping tools.
+      // On failure (bad table, missing match.id, ...) it falls through to the normal tool-result
+      // handling below instead, so the model can see the error and retry.
+      const formToolUse = toolUses.find((t) => t.name === 'request_form');
+      if (formToolUse) {
+        const outcome = await this.runRequestForm(request.jwt, formToolUse);
+        if (outcome.ok) {
+          // Safe to return without resolving any sibling tool_use in this same response (unlikely,
+          // but possible) — this ends the turn, so `messages` below is never sent back to Anthropic.
+          return {
+            type: 'form_request',
+            content: outcome.intro,
+            form: outcome.form,
+            messages: [...request.messages, { role: 'assistant', content: outcome.intro }],
+          };
+        }
+        // Failed: the loop continues, so every tool_use in this response still needs a matching
+        // tool_result next turn — not just the one that failed — or the next Anthropic call errors.
+        messages.push({ role: 'assistant', content: toAssistantContent(response.content) });
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        for (const toolUse of toolUses) {
+          toolResults.push(toolUse.id === formToolUse.id ? outcome.toolResult : await this.runTool(request.jwt, toolUse));
+        }
+        messages.push({ role: 'user', content: toolResults });
+        continue;
+      }
+
       messages.push({ role: 'assistant', content: toAssistantContent(response.content) });
 
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
@@ -138,7 +216,8 @@ export class DbChatService {
     }
 
     return {
-      reply,
+      type: 'text',
+      content: reply,
       messages: [...request.messages, { role: 'assistant', content: reply }],
     };
   }
@@ -154,7 +233,7 @@ export class DbChatService {
         model,
         max_tokens: 1024,
         system: systemPrompt,
-        tools: allowTools ? [QUERY_TABLE_TOOL, WRITE_TABLE_TOOL] : undefined,
+        tools: allowTools ? [QUERY_TABLE_TOOL, WRITE_TABLE_TOOL, REQUEST_FORM_TOOL] : undefined,
         messages,
       });
     } catch (err) {
@@ -191,8 +270,11 @@ export class DbChatService {
     }
   }
 
+  /** Delete-only now — create/update go through request_form + POST /agent/submit-form instead,
+   *  so a write's field values always come from a form the user actually saw, never a value this
+   *  tool call guessed or parsed out of prose. */
   private async runWriteTable(jwt: string, toolUse: Anthropic.ToolUseBlock): Promise<Anthropic.ToolResultBlockParam> {
-    const input = toolUse.input as { operation?: unknown; table?: unknown; id?: unknown; fields?: unknown; confirmed?: unknown };
+    const input = toolUse.input as { operation?: unknown; table?: unknown; id?: unknown; confirmed?: unknown };
 
     if (input.confirmed !== true) {
       return {
@@ -205,37 +287,69 @@ export class DbChatService {
     if (typeof input.table !== 'string' || !input.table) {
       return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: 'table is required' };
     }
-    if (input.operation !== 'create' && input.operation !== 'update' && input.operation !== 'delete') {
-      return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: 'operation must be "create", "update", or "delete"' };
+    if (input.operation !== 'delete') {
+      return {
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        is_error: true,
+        content: 'write_table only supports operation "delete" — use request_form for create/update.',
+      };
+    }
+    if (typeof input.id !== 'string' || !input.id) {
+      return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: 'id is required for delete' };
     }
 
     try {
-      if (input.operation === 'create') {
-        if (!isRecord(input.fields)) {
-          return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: 'fields is required for create' };
-        }
-        const created = await this.supabaseQuery.createRow(jwt, input.table, input.fields);
-        return { type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(created) };
-      }
-      if (input.operation === 'update') {
-        if (typeof input.id !== 'string' || !input.id) {
-          return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: 'id is required for update' };
-        }
-        if (!isRecord(input.fields)) {
-          return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: 'fields is required for update' };
-        }
-        const updated = await this.supabaseQuery.updateRow(jwt, input.table, input.id, input.fields);
-        return { type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(updated) };
-      }
-      // delete
-      if (typeof input.id !== 'string' || !input.id) {
-        return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: 'id is required for delete' };
-      }
       await this.supabaseQuery.deleteRow(jwt, input.table, input.id);
       return { type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify({ deleted: true, id: input.id }) };
     } catch (err) {
       return this.toToolResultOrThrow(toolUse.id, err, 'The change could not be made (a genuine error, not necessarily a permissions restriction).');
     }
+  }
+
+  /** Builds the FormSpec for a successful request_form call. Returns a tool-error result instead
+   *  (rather than throwing) for anything the model can plausibly fix and retry — an unknown table,
+   *  or a missing match.id on an update — so the loop keeps going instead of failing the turn. */
+  private async runRequestForm(
+    jwt: string,
+    toolUse: Anthropic.ToolUseBlock,
+  ): Promise<{ ok: true; form: FormSpec; intro: string } | { ok: false; toolResult: Anthropic.ToolResultBlockParam }> {
+    const input = toolUse.input as {
+      table?: unknown;
+      operation?: unknown;
+      match?: unknown;
+      intro?: unknown;
+      fields?: unknown;
+      known_values?: unknown;
+    };
+    const err = (content: string): { ok: false; toolResult: Anthropic.ToolResultBlockParam } => ({
+      ok: false,
+      toolResult: { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content },
+    });
+
+    if (typeof input.table !== 'string' || !input.table) return err('table is required');
+    if (input.operation !== 'insert' && input.operation !== 'update') return err('operation must be "insert" or "update"');
+    if (typeof input.intro !== 'string' || !input.intro) return err('intro is required');
+
+    let match: { id: string } | undefined;
+    if (input.operation === 'update') {
+      const m = isRecord(input.match) ? input.match : undefined;
+      if (typeof m?.id !== 'string' || !m.id) {
+        return err('match.id is required for operation "update" — identify the row via query_table first, do not guess an id.');
+      }
+      match = { id: m.id };
+    }
+
+    const requestedFields = Array.isArray(input.fields) ? input.fields.filter((f): f is string => typeof f === 'string') : [];
+    const knownValues = isRecord(input.known_values) ? input.known_values : {};
+
+    const { columns, constraints, enums } = await this.schemaService.getTableInfo(jwt, input.table);
+    if (columns.length === 0) {
+      return err(`Unknown table "${input.table}" — it isn't in the known schema.`);
+    }
+
+    const form = buildFormSpec(input.table, input.operation, requestedFields, knownValues, match, columns, constraints, enums);
+    return { ok: true, form, intro: input.intro };
   }
 
   /** Shared by read and write tools: an expired/invalid session aborts the whole turn (thrown,

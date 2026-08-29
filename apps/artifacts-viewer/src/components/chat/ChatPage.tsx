@@ -58,7 +58,7 @@ export function ChatPage() {
       .catch(() => {
         // Fall back to the built-in defaults if the agent service is unreachable.
         setProviders([
-          { id: 'claude', label: 'Claude', model: 'claude-opus-4-8' },
+          { id: 'claude', label: 'Claude', model: 'claude-sonnet-5' },
           { id: 'gemini', label: 'Gemini', model: 'gemini-2.5-flash' },
         ]);
       });

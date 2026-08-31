@@ -17,11 +17,35 @@
 --     entirely by default in Supabase, so those paths are unaffected
 --     by anything below.
 --  4. Anonymous (unauthenticated) access is NOT granted anywhere.
+--  5. Normal user writes (create_material, issue_material, etc.) go
+--     through supabase-service using the CALLER's own JWT/access
+--     token — not service_role — per dynamic_ui's no-new-secret-key
+--     architecture. This means every "any staff" write path below
+--     must actually be reachable under RLS as `authenticated`. See
+--     the FIX LOG for the two places this broke.
 --
 --  If your auth model differs (e.g. Supabase Auth user id != app user
 --  id, or you use custom JWT claims for role), change only the
 --  `app_user_id()` / `app_role()` functions below — every policy is
 --  built on top of those two.
+--
+--  FIX LOG (this revision):
+--   - settings_select added: settings was previously OWNER-only for
+--     every operation, but create_purchase_order (any staff) must
+--     read Setting['po.approval_threshold_inr'] to decide
+--     PENDING_APPROVAL vs APPROVED. Writes remain owner-only.
+--   - movements_insert now blocks type = 'REVERSAL' for non-owners.
+--     The tool catalog marks reverse_movement as owner-only and
+--     destructive, but the original policy only checked
+--     is_authenticated_staff() with no per-type gate — the one
+--     owner-only write path in the whole system that was resting on
+--     tool-layer trust alone. Mirrors the pattern already used for
+--     purchase_orders / stock_counts (staff can't reach the
+--     owner-gated status/type on their own).
+--   - Corresponding balance-trigger fix (SECURITY DEFINER) lives in
+--     02_guard_quest.sql — stock_balances' policies below are
+--     unchanged and correct; the bug was in how the trigger executed,
+--     not in these policies.
 -- ═══════════════════════════════════════════════════════════════════
 
 -- ── 0. Helper functions ─────────────────────────────────────────────
@@ -171,27 +195,51 @@ create policy numseries_select on number_series for select using (is_authenticat
 create policy numseries_write  on number_series for all using (is_authenticated_staff()) with check (is_authenticated_staff());
 
 -- ── 4. settings ──────────────────────────────────────────────────────
--- Business-rule knobs (approval thresholds etc). OWNER only, full stop.
+-- Business-rule knobs (approval thresholds etc). Writes stay OWNER
+-- only. Reads are opened to all staff: create_purchase_order (any
+-- staff, per the tool catalog) must read
+-- Setting['po.approval_threshold_inr'] at call time to decide
+-- PENDING_APPROVAL vs APPROVED — under the caller's own JWT, an
+-- owner-only SELECT policy would make that read return nothing for a
+-- STOREKEEPER and silently break the threshold check.
 
-create policy settings_owner_all on settings
-  for all using (is_owner()) with check (is_owner());
+create policy settings_select on settings
+  for select using (is_authenticated_staff());
+
+create policy settings_owner_write on settings
+  for insert with check (is_owner());
+
+create policy settings_owner_update on settings
+  for update using (is_owner()) with check (is_owner());
+
+create policy settings_owner_delete on settings
+  for delete using (is_owner());
 
 -- ── 5. stock_balances, lots ──────────────────────────────────────────
--- Balance is DERIVED — nobody writes it directly, ever (the trigger in
--- 02_guard_quest.sql runs as the table owner / definer path via the
--- BEFORE INSERT trigger on stock_movements, not through direct DML on
--- this table, so client roles get read-only access).
+-- Balance is DERIVED — nobody writes it directly, ever. The trigger in
+-- 02_guard_quest.sql (apply_stock_movement / create_balance_row) is
+-- SECURITY DEFINER specifically so it can write here despite
+-- `authenticated` having no INSERT/UPDATE policy on this table — do
+-- not "fix" that by adding a broad write policy here; that would let
+-- any staff (or a compromised agent call) overwrite balances directly,
+-- bypassing the weighted-average math and the ledger entirely.
 
 create policy balances_select on stock_balances for select using (is_authenticated_staff());
 -- Deliberately NO insert/update/delete policy for authenticated roles.
--- Only the trigger function (running as table owner) and service_role
--- can change this table.
+-- Only the SECURITY DEFINER trigger functions and service_role can
+-- change this table.
 
 create policy lots_select on lots for select using (is_authenticated_staff());
 create policy lots_write  on lots for insert with check (is_authenticated_staff());
 create policy lots_update on lots for update using (is_authenticated_staff()) with check (is_authenticated_staff());
 
 -- ── 6. jobs, customer_pos, job_bom_lines ─────────────────────────────
+-- Note: job_bom_lines' qtyPerPiece/requiredQty are additionally locked
+-- to job.status = 'OPEN' by trg_guard_bom_lock in 02_guard_quest.sql.
+-- These RLS policies stay permissive on "any staff" for INSERT/UPDATE
+-- because issuedQty/returnedQty (written by issue_material /
+-- return_material) must remain writable at MATERIAL_ISSUED too — the
+-- status-aware distinction is handled at the trigger level, not here.
 
 create policy custpo_select on customer_pos for select using (is_authenticated_staff());
 create policy custpo_write  on customer_pos for insert with check (is_authenticated_staff());
@@ -264,15 +312,22 @@ create policy scrap_select on scrap_sales for select using (is_authenticated_sta
 create policy scrap_write  on scrap_sales for insert with check (is_authenticated_staff());
 
 -- ── 10. stock_movements — the ledger ─────────────────────────────────
--- Read: any staff. Insert: any staff (the guard triggers from
--- 02_guard_quest.sql do the real gatekeeping — job required, approved
--- count required, balance maths, etc). NO update/delete policy is
--- defined for ANY role: combined with `force row level security` and
--- the append-only triggers, this table cannot be altered or erased by
+-- Read: any staff. Insert: any staff, EXCEPT type = 'REVERSAL', which
+-- is owner-only (reverse_movement is marked owner-only + destructive
+-- in the tool catalog). Every other guard (job required, approved
+-- count required, balance maths, append-only) still comes from the
+-- triggers in 02_guard_quest.sql. NO update/delete policy is defined
+-- for ANY role: combined with `force row level security` and the
+-- append-only triggers, this table cannot be altered or erased by
 -- anyone talking through the API, human or agent.
 
 create policy movements_select on stock_movements for select using (is_authenticated_staff());
-create policy movements_insert on stock_movements for insert with check (is_authenticated_staff());
+
+create policy movements_insert on stock_movements for insert
+  with check (
+    is_authenticated_staff()
+    and (type <> 'REVERSAL' or is_owner())
+  );
 -- No UPDATE/DELETE policy → those operations are rejected by RLS
 -- before they even reach the append-only triggers.
 

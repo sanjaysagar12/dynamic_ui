@@ -10,6 +10,14 @@
 --
 --  This does NOT touch auth.users, storage, or anything else Supabase
 --  manages outside the `public` schema.
+--
+--  FIX LOG (this revision):
+--   - Added drop for guard_bom_lock() in §4. This trigger function
+--     was added in 02_guard_quest.sql (job_bom_lines lock — see that
+--     file's own fix log) but was missing here. Its trigger
+--     (trg_guard_bom_lock) is removed automatically when job_bom_lines
+--     is dropped in §2, but the function itself would otherwise
+--     survive a reset and persist stale across runs.
 -- ═══════════════════════════════════════════════════════════════════
 
 -- ── 1. Views ─────────────────────────────────────────────────────────
@@ -59,6 +67,7 @@ revoke usage on schema public from authenticated;
 -- ── 4. Functions (guard triggers, balance engine, RLS helpers) ────────
 drop function if exists apply_stock_movement()      cascade;
 drop function if exists guard_count_adjustment()     cascade;
+drop function if exists guard_bom_lock()             cascade;
 drop function if exists block_ledger_mutation()      cascade;
 drop function if exists create_balance_row()         cascade;
 drop function if exists set_updated_at()             cascade;

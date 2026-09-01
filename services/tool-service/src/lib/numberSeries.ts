@@ -26,3 +26,18 @@ export async function nextNumber(tx: Prisma.TransactionClient, prefix: string, f
   const padded = String(lastNumber).padStart(padding, '0');
   return fiscalYear ? `${prefix}-${fiscalYear}-${padded}` : `${prefix}-${padded}`;
 }
+
+/**
+ * Indian FY (Apr–Mar) as a NumberSeries financialYear string — e.g. a date
+ * in Apr 2026–Mar 2027 → "2627". Driven by the document's own business date
+ * (e.g. a job's jobDate), not the server clock, so a backdated document
+ * lands in the FY it actually belongs to. Uses UTC getters so the result
+ * doesn't shift with the server process's local timezone.
+ */
+export function indianFinancialYear(date: Date): string {
+  const year = date.getUTCFullYear();
+  const startYear = date.getUTCMonth() >= 3 ? year : year - 1; // Apr = month index 3
+  const shortStart = String(startYear % 100).padStart(2, '0');
+  const shortEnd = String((startYear + 1) % 100).padStart(2, '0');
+  return `${shortStart}${shortEnd}`;
+}

@@ -12,6 +12,10 @@ export interface TranslatedError {
 const PRISMA_ERROR_MAP = new Map<string, TranslatedError>([
   // populated in later batches, e.g.:
   // ['P2002:materials_code_key', { error: 'Material code already exists', code: 'DUPLICATE_CODE' }],
+  [
+    'P2002:customer_pos_customerId_number_key',
+    { error: 'A PO with this number already exists for this customer', code: 'DUPLICATE_CUSTOMER_PO' },
+  ],
 ]);
 
 function constraintKey(err: Prisma.PrismaClientKnownRequestError): string | undefined {

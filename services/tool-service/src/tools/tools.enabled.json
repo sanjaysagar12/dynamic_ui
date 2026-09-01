@@ -1,1 +1,1 @@
-["register", "login", "whoami", "list_rows", "search_materials", "create_material", "update_material", "deactivate_material", "get_material_balance"]
+["register", "login", "whoami", "list_rows", "search_materials", "create_material", "update_material", "deactivate_material", "get_material_balance", "create_customer_po", "create_job", "set_job_bom", "check_job_shortage", "get_job", "get_job_bom_variance"]

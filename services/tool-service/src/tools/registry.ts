@@ -14,6 +14,12 @@ import createMaterialTool from './plugins/create_material.js';
 import updateMaterialTool from './plugins/update_material.js';
 import deactivateMaterialTool from './plugins/deactivate_material.js';
 import getMaterialBalanceTool from './plugins/get_material_balance.js';
+import createCustomerPoTool from './plugins/create_customer_po.js';
+import createJobTool from './plugins/create_job.js';
+import setJobBomTool from './plugins/set_job_bom.js';
+import checkJobShortageTool from './plugins/check_job_shortage.js';
+import getJobTool from './plugins/get_job.js';
+import getJobBomVarianceTool from './plugins/get_job_bom_variance.js';
 // esModuleInterop is off workspace-wide, so a default import here would read
 // a nonexistent `.default` off webpack's raw JSON module (module.exports is
 // the array itself) and silently resolve to undefined — import-equals avoids
@@ -36,6 +42,12 @@ const ALL_PLUGINS: ToolDefinition[] = [
   updateMaterialTool,
   deactivateMaterialTool,
   getMaterialBalanceTool,
+  createCustomerPoTool,
+  createJobTool,
+  setJobBomTool,
+  checkJobShortageTool,
+  getJobTool,
+  getJobBomVarianceTool,
 ];
 
 export interface ToolCatalogEntry {

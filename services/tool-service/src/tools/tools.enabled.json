@@ -1,1 +1,1 @@
-["register", "login", "whoami", "list_rows"]
+["register", "login", "whoami", "list_rows", "search_materials", "create_material", "update_material", "deactivate_material", "get_material_balance"]

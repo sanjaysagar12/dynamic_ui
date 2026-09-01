@@ -9,6 +9,11 @@ import registerTool from './plugins/register.js';
 import loginTool from './plugins/login.js';
 import whoamiTool from './plugins/whoami.js';
 import listRowsTool from './plugins/list_rows.js';
+import searchMaterialsTool from './plugins/search_materials.js';
+import createMaterialTool from './plugins/create_material.js';
+import updateMaterialTool from './plugins/update_material.js';
+import deactivateMaterialTool from './plugins/deactivate_material.js';
+import getMaterialBalanceTool from './plugins/get_material_balance.js';
 // esModuleInterop is off workspace-wide, so a default import here would read
 // a nonexistent `.default` off webpack's raw JSON module (module.exports is
 // the array itself) and silently resolve to undefined — import-equals avoids
@@ -21,7 +26,17 @@ import enabledList = require('./tools.enabled.json');
 // so runtime directory scanning would silently find zero files in production
 // even though it appears to work under a dev-time loader. Adding a new plugin
 // means adding both the file and this line.
-const ALL_PLUGINS: ToolDefinition[] = [registerTool, loginTool, whoamiTool, listRowsTool];
+const ALL_PLUGINS: ToolDefinition[] = [
+  registerTool,
+  loginTool,
+  whoamiTool,
+  listRowsTool,
+  searchMaterialsTool,
+  createMaterialTool,
+  updateMaterialTool,
+  deactivateMaterialTool,
+  getMaterialBalanceTool,
+];
 
 export interface ToolCatalogEntry {
   name: string;

@@ -25,17 +25,26 @@ export class ToolServiceAuthenticationProvider implements AuthenticationProvider
       return null;
     }
 
-    const response = await fetch(new URL('/auth/verify', this.toolServiceUrl), {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    try {
+      const response = await fetch(new URL('/auth/verify', this.toolServiceUrl), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-    if (!response.ok) {
+      if (!response.ok) {
+        return null;
+      }
+
+      const verified = (await response.json()) as VerifyResponse;
+      if (typeof verified.userId !== 'string' || typeof verified.role !== 'string') {
+        return null;
+      }
+      return { subject: verified.userId, role: verified.role, token };
+    } catch {
+      // Network failure or malformed JSON — treated the same as an invalid
+      // token, matching every other "no valid identity" outcome above.
       return null;
     }
-
-    const verified = (await response.json()) as VerifyResponse;
-    return { subject: verified.userId, role: verified.role, token };
   }
 
   private extractToken(req: FastifyRequest): string | null {

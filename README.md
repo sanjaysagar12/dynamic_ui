@@ -58,14 +58,13 @@ ANTHROPIC_MODEL=claude-sonnet-5
 ARTIFACTS_SERVER_URL=http://localhost:3400
 PORT=5102
 
-# The get_schema tool opencode uses (services/artifacts-server/artifacts/.opencode/tool/get_schema.ts)
-# needs these to look up your real Supabase schema:
-SUPABASE_URL=https://<your-project>.supabase.co
-SUPABASE_SECRET_KEY=<your secret/service-role key>
+# Where opencode's get_tools tool (services/artifacts-server/artifacts/.opencode/tool/get_tools.ts)
+# looks up the live tool catalog. Defaults to http://localhost:5104 if unset.
+TOOL_SERVICE_URL=http://localhost:5104
 ```
 `LLM_PROVIDER`/`*_MODEL` just pick which model opencode is told to use (`--model anthropic/<model>` or `--model google/<model>`) — actual provider credentials come from opencode's own auth (`opencode auth login`, or `ANTHROPIC_API_KEY`/`GEMINI_API_KEY` inherited from this process's environment). You can also pick the provider per-request from the chat page's model picker regardless of the default.
 
-`SUPABASE_SECRET_KEY` is the **only** place in the whole system that should ever hold a Supabase secret key. It's used solely by the `get_schema` tool at artifact-generation time — never for any runtime data request.
+> **Changed:** this service used to also need `SUPABASE_URL`/`SUPABASE_SECRET_KEY`, held solely for opencode's old `get_schema` tool (direct Supabase schema introspection with a secret key). That tool and both env vars are gone — opencode now calls `get_tools` against `tool-service`'s open, metadata-only `GET /tools` endpoint instead, and this service holds no database credential of any kind, generation-time or otherwise.
 
 **`services/db-agent-service/.env`** *(required to use the Database Chat page)*
 ```
@@ -131,7 +130,7 @@ None of the services auto-restart on file changes except `artifacts-viewer` (Nex
 ```
 apps/artifacts-viewer/          Next.js app — the UI
 services/artifacts-server/      Static artifact server (+ services/artifacts-server/artifacts/ holds the actual artifact files,
-                                 plus the shared AGENTS.md / .opencode/tool/get_schema.ts opencode uses when authoring them)
+                                 plus the shared AGENTS.md / .opencode/tool/get_tools.ts opencode uses when authoring them)
 services/supabase-service/      Anon-key-only Supabase middle layer + Supabase auth-token verification
 services/artifact-agent-service/ Drives opencode to generate/update artifacts (chat-artifact)
 services/db-agent-service/      Answers database questions over chat, RLS-scoped via supabase-service (chat-db)

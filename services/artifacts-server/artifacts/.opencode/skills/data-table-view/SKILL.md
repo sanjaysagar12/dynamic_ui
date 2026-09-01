@@ -5,38 +5,30 @@ description: "USE WHEN displaying a list or table of records with search, filter
 
 # Data table / list view pattern
 
-## Building the search query
+## Fetching the list
 
-The bridge's `search` argument is a plain query string of `column=value` pairs — **exact-match filters only**, not PostgREST operator syntax (`completed=true`, never `completed=eq.true`). Two keys are reserved as modifiers instead of filters:
-
-- `order=column.asc` or `order=column.desc` — sort.
-- `limit=n` — cap row count.
-
-Combine with `&`:
+Check `get_tools` for what's actually available: a generic `list_rows` tool (args like `{ table, where, orderBy, limit }` — confirm the exact shape from its own `inputSchema`, don't assume) covers a plain listing; some domains additionally expose a purpose-built search tool (e.g. `search_materials`, args `{ query }`) for server-side text search — prefer that over `list_rows` when one exists and fits, since it avoids fetching the whole table just to filter client-side.
 
 ```javascript
-function loadProducts() {
-  var parts = [];
-  if (state.categoryFilter) parts.push('category_id=' + encodeURIComponent(state.categoryFilter));
-  parts.push('order=name.asc');
-  return request('GET', 'products', undefined, undefined, parts.join('&')).then(function (res) {
-    state.products = res.data; // GET list responses are always { data: [...] } — read .data
-    renderProducts();
+function loadMaterials() {
+  return callTool('list_rows', { table: 'materials', orderBy: 'name', limit: 100 }).then(function (rows) {
+    state.materials = rows; // callTool already resolves to the tool's own data, unwrapped
+    renderMaterials();
   });
 }
 ```
 
-Exact-match filtering means **free-text search has to happen client-side**, not by sending the search term as a filter — the bridge has no `ILIKE`/contains support. Fetch the (filtered-by-real-columns) rows, then filter the in-memory array by substring match against whatever field the user is searching:
+If no server-side search tool exists for this data, free-text search has to happen client-side instead — fetch the rows via `list_rows`, then filter the in-memory array by substring match against whatever field the user is searching:
 
 ```javascript
-function visibleProducts() {
+function visibleMaterials() {
   var q = state.searchTerm.trim().toLowerCase();
-  if (!q) return state.products;
-  return state.products.filter(function (p) { return p.name.toLowerCase().indexOf(q) !== -1; });
+  if (!q) return state.materials;
+  return state.materials.filter(function (m) { return m.name.toLowerCase().indexOf(q) !== -1; });
 }
 ```
 
-Debounce the search input's re-render (150-250ms) rather than re-filtering on every keystroke for anything beyond a trivial row count, so typing doesn't feel janky.
+Debounce the search input's re-render (150-250ms) rather than re-filtering on every keystroke for anything beyond a trivial row count, so typing doesn't feel janky. If a real search tool exists instead, debounce the tool call itself the same way rather than firing one per keystroke.
 
 ## Loading, empty, and error states
 
@@ -47,4 +39,4 @@ Every list view needs three states, not just the happy path:
 
 ## Refreshing after a mutation
 
-After any create/update/delete in a modal (see the crud-form-modal skill), re-run the same `loadX()` function that populated the list rather than manually splicing the changed row into local state — it's less code, it can't drift out of sync with server-computed fields (defaults, timestamps, server-side totals), and it naturally picks up anything RLS might now show or hide.
+After any create/update/deactivate in a modal (see the crud-form-modal skill), re-run the same `loadX()` function that populated the list rather than manually splicing the changed row into local state — it's less code, it can't drift out of sync with server-computed fields (defaults, timestamps, server-side totals), and it naturally picks up anything a tool's own scoping might now show or hide.

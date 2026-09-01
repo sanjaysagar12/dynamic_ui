@@ -1,5 +1,5 @@
 import './global.css';
-import { SupabaseSessionProvider } from '../lib/supabase/supabase-session-context';
+import { SessionProvider } from '../lib/session/session-context';
 
 export const metadata = {
   title: 'Artifacts Viewer',
@@ -14,7 +14,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <SupabaseSessionProvider>{children}</SupabaseSessionProvider>
+        <SessionProvider>{children}</SessionProvider>
       </body>
     </html>
   );

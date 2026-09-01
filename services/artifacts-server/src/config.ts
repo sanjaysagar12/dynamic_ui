@@ -3,7 +3,7 @@ import { resolve } from 'path';
 export interface AppConfig {
   port: number;
   artifactsRoot: string;
-  supabaseServiceUrl: string;
+  toolServiceUrl: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -13,6 +13,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     // this still conflicts in a given environment.
     port: Number(env.PORT) || 3400,
     artifactsRoot: resolve(env.ARTIFACTS_ROOT || resolve(__dirname, '../artifacts')),
-    supabaseServiceUrl: env.SUPABASE_SERVICE_URL || 'http://localhost:3335',
+    toolServiceUrl: env.TOOL_SERVICE_URL || 'http://localhost:5104',
   };
 }

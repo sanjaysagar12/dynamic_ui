@@ -14,7 +14,7 @@ import { useArtifactDataBridge } from '../hooks/useArtifactDataBridge';
  *  - no `allow` (Permissions Policy) features are delegated.
  *  - referrerPolicy is "no-referrer" so this app's URL is never sent to the
  *    artifacts server as a Referer header.
- *  - the artifact is never given a Supabase (or any other) credential — see
+ *  - the artifact is never given a session token (or any other credential) — see
  *    useArtifactDataBridge — since injected/malicious artifact code could
  *    exfiltrate a token it can read. Data access goes through postMessage,
  *    mediated by this component using the parent's own session.

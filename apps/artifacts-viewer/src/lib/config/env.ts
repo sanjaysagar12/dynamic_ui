@@ -14,12 +14,12 @@ export function getArtifactAgentServiceUrl(): string {
   return process.env.ARTIFACT_AGENT_SERVICE_URL || 'http://localhost:5102';
 }
 
-/** Server-only: base URL of the DB Agent Service, which answers database questions via chat, RLS-scoped to the caller's Supabase JWT. */
+/** Server-only: base URL of the DB Agent Service, which answers database questions via chat, scoped to the caller's tool-service access token. */
 export function getDbAgentServiceUrl(): string {
   return process.env.DB_AGENT_SERVICE_URL || 'http://localhost:5103';
 }
 
-/** Server-only: base URL of the Supabase Service, the middle layer between artifacts and Supabase. */
-export function getSupabaseServiceUrl(): string {
-  return process.env.SUPABASE_SERVICE_URL || 'http://localhost:3335';
+/** Server-only: base URL of tool-service, the plugin-based tool-call layer over Postgres. */
+export function getToolServiceUrl(): string {
+  return process.env.TOOL_SERVICE_URL || 'http://localhost:5104';
 }

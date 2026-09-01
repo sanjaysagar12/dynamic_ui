@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { AppConfig } from './config.js';
 import { ArtifactPathResolver } from './resolution/artifact-path-resolver.js';
 import { ManifestRepository } from './manifest/manifest-repository.js';
-import { SupabaseAuthenticationProvider } from './auth/supabase-authentication-provider.js';
+import { ToolServiceAuthenticationProvider } from './auth/tool-service-authentication-provider.js';
 import { RoleAuthorizationStrategy } from './authorization/role-authorization-strategy.js';
 import { ArtifactService } from './service/artifact-service.js';
 import { ArtifactCatalogService } from './service/artifact-catalog.service.js';
@@ -14,7 +14,7 @@ export function createApp(config: AppConfig): FastifyInstance {
 
   const pathResolver = new ArtifactPathResolver(config.artifactsRoot);
   const manifestRepository = new ManifestRepository();
-  const authenticationProvider = new SupabaseAuthenticationProvider(config.supabaseServiceUrl);
+  const authenticationProvider = new ToolServiceAuthenticationProvider(config.toolServiceUrl);
   const authorizationStrategy = new RoleAuthorizationStrategy();
 
   const artifactService = new ArtifactService(

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { DbChatMessage, FormFieldSpec, FormSpec } from '../../lib/db-chat/types';
 import { submitDbChatForm, DbChatRequestError } from '../../lib/api/db-chat-client';
+import type { ToolResult } from '../../lib/api/session-client';
 import { theme, inputStyle, primaryButtonStyle, secondaryButtonStyle } from '../../lib/ui/theme';
 
 interface ForeignKeyOption {
@@ -56,12 +57,14 @@ export function FormRequestCard({ form, messages, token, onDone, onCancel }: For
     );
     for (const field of fkFields) {
       setFkLoading((prev) => ({ ...prev, [field.name]: true }));
-      fetch(`/api/data/${encodeURIComponent(field.referenceTable)}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      fetch('/api/tools/list_rows', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ args: { table: field.referenceTable } }),
       })
         .then((res) => res.json())
-        .then((body: { data?: Record<string, unknown>[] }) => {
-          const rows = body.data ?? [];
+        .then((body: ToolResult<Record<string, unknown>[]>) => {
+          const rows = body.ok ? body.data : [];
           const labelColumn = field.referenceLabelColumn ?? 'id';
           setFkOptions((prev) => ({
             ...prev,

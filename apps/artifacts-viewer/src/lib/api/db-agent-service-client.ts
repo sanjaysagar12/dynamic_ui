@@ -14,8 +14,8 @@ async function parseErrorDetail(response: Response): Promise<string> {
   return (body && typeof body.detail === 'string' && body.detail) || `DB agent service error (status ${response.status})`;
 }
 
-/** Sends a chat turn to the DB Agent Service, forwarding the caller's own Supabase access token
- *  so it can read data through supabase-service under that token — RLS decides what comes back,
+/** Sends a chat turn to the DB Agent Service, forwarding the caller's own tool-service access token
+ *  so it can read data through tool-service under that token — its tools decide what comes back,
  *  never this service's own judgment. */
 export async function chatWithDbAgent(messages: DbChatMessage[], jwt: string): Promise<DbChatResponsePayload> {
   const response = await fetch(new URL('/agent/chat-db', getDbAgentServiceUrl()), {

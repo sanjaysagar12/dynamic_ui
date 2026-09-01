@@ -3,10 +3,10 @@
 import { buildArtifactUrl } from '../lib/artifacts/artifact-url';
 
 /**
- * Builds the iframe src for an artifact, carrying the user's own Supabase
+ * Builds the iframe src for an artifact, carrying the user's own session
  * access token as a query param (iframe navigations can't set headers). The
- * Artifacts Server verifies this token itself via supabase-service — see
- * SupabaseAuthenticationProvider. The artifact's own data access instead goes
+ * Artifacts Server verifies this token itself via tool-service — see
+ * ToolServiceAuthenticationProvider. The artifact's own data access instead goes
  * through the postMessage bridge (see useArtifactDataBridge), never through
  * anything embedded in the URL.
  */

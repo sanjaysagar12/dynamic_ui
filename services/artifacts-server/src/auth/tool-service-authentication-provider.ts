@@ -10,14 +10,14 @@ interface VerifyResponse {
 
 /**
  * Authenticates artifact requests by forwarding the caller's bearer token to
- * supabase-service's POST /auth/verify — the JWT itself is never decoded or
- * trusted locally, since supabase-service is the only layer holding the
- * Supabase project's auth configuration. A failed/invalid token and a
- * missing one are treated the same way (null), matching the previous local
+ * tool-service's POST /auth/verify — the JWT itself is never decoded or
+ * trusted locally, since tool-service is the only layer holding the
+ * JWT_SECRET it was signed with. A failed/invalid token and a missing one
+ * are treated the same way (null), matching the previous local
  * JwtAuthenticationProvider's behavior.
  */
-export class SupabaseAuthenticationProvider implements AuthenticationProvider {
-  constructor(private readonly supabaseServiceUrl: string) {}
+export class ToolServiceAuthenticationProvider implements AuthenticationProvider {
+  constructor(private readonly toolServiceUrl: string) {}
 
   async authenticate(req: FastifyRequest): Promise<AuthContext | null> {
     const token = this.extractToken(req);
@@ -25,7 +25,7 @@ export class SupabaseAuthenticationProvider implements AuthenticationProvider {
       return null;
     }
 
-    const response = await fetch(new URL('/auth/verify', this.supabaseServiceUrl), {
+    const response = await fetch(new URL('/auth/verify', this.toolServiceUrl), {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });

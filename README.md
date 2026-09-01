@@ -39,7 +39,7 @@ Each service reads its own `.env` file (already `.gitignore`d — never commit r
 **`services/artifacts-server/.env`**
 ```
 PORT=3400
-SUPABASE_SERVICE_URL=http://localhost:3335
+TOOL_SERVICE_URL=http://localhost:5104
 ```
 
 **`services/supabase-service/.env`** *(required — this is the login/data layer)*
@@ -82,9 +82,9 @@ This service holds no Supabase key of its own — every data read it makes goes 
 ARTIFACTS_SERVER_URL=http://localhost:3400
 ARTIFACT_AGENT_SERVICE_URL=http://localhost:5102
 DB_AGENT_SERVICE_URL=http://localhost:5103
-SUPABASE_SERVICE_URL=http://localhost:3335
+TOOL_SERVICE_URL=http://localhost:5104
 ```
-All four are read server-side only (Next.js `.env.local`, not committed) — the browser never sees any of these URLs. Every request the browser makes goes to `artifacts-viewer`'s own origin (`/api/...`), which forwards to the right backend service from Node. That's what lets `artifacts-server`/`artifact-agent-service`/`db-agent-service`/`supabase-service` stay private/internal-only in deployment: only `artifacts-viewer` needs to be publicly reachable.
+All four are read server-side only (Next.js `.env.local`, not committed) — the browser never sees any of these URLs. Every request the browser makes goes to `artifacts-viewer`'s own origin (`/api/...`), which forwards to the right backend service from Node. That's what lets `artifacts-server`/`artifact-agent-service`/`db-agent-service`/`tool-service` stay private/internal-only in deployment: only `artifacts-viewer` needs to be publicly reachable.
 
 ## Running the services
 

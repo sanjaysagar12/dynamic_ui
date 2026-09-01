@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ROLES } from '@org/shared-auth';
-import { useSupabaseSession } from '../../lib/supabase/supabase-session-context';
+import { useSession } from '../../lib/session/session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../../hooks/useArtifactSrc';
 import { fetchProviders, sendChatMessage, ChatRequestError } from '../../lib/api/artifact-chat-client';
@@ -12,7 +12,7 @@ import type { ChatMessage, Provider, ProviderInfo } from '../../lib/chat/types';
 import type { ArtifactCatalogEntry } from '../../lib/artifacts/types';
 import type { Skill } from '../../lib/skills/types';
 import { ArtifactFrame } from '../ArtifactFrame';
-import { SupabaseSessionWidget } from '../supabase/SupabaseSessionWidget';
+import { AuthWidget } from '../auth/AuthWidget';
 import { ProviderSelector } from './ProviderSelector';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatComposer } from './ChatComposer';
@@ -22,7 +22,7 @@ import { SkillSelector } from './SkillSelector';
 import { theme, secondaryButtonStyle } from '../../lib/ui/theme';
 
 export function ChatPage() {
-  const { session } = useSupabaseSession();
+  const { session } = useSession();
   const token = session?.accessToken ?? null;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [slug, setSlug] = useState<string | null>(null);
@@ -176,7 +176,7 @@ export function ChatPage() {
         <ChatComposer disabled={pending} onSend={handleSend} />
 
         <div style={{ borderTop: `1px solid ${theme.color.border}`, padding: '0.85rem 1rem' }}>
-          <SupabaseSessionWidget role={role} popupPlacement="above" />
+          <AuthWidget role={role} popupPlacement="above" />
         </div>
       </div>
 
@@ -211,7 +211,7 @@ export function ChatPage() {
         )}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {!token && (
-            <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>Log in with Supabase to preview artifacts.</p>
+            <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>Log in to preview artifacts.</p>
           )}
           {token && !urlPath && (
             <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>No artifact yet — start chatting to create one.</p>

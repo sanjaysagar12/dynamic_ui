@@ -3,15 +3,15 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
-import { useSupabaseSession } from '../../lib/supabase/supabase-session-context';
+import { useSession } from '../../lib/session/session-context';
 import { sendDbChatMessage, DbChatRequestError } from '../../lib/api/db-chat-client';
 import type { DbChatMessage, FormSpec } from '../../lib/db-chat/types';
-import { SupabaseSessionWidget } from '../supabase/SupabaseSessionWidget';
+import { AuthWidget } from '../auth/AuthWidget';
 import { FormRequestCard } from './FormRequestCard';
 import { theme } from '../../lib/ui/theme';
 
 export function DbChatPage() {
-  const { session } = useSupabaseSession();
+  const { session } = useSession();
   const token = session?.accessToken ?? null;
   const [messages, setMessages] = useState<DbChatMessage[]>([]);
   const [pendingForm, setPendingForm] = useState<FormSpec | null>(null);
@@ -32,8 +32,9 @@ export function DbChatPage() {
     setPendingForm(null);
 
     try {
-      // The Supabase JWT travels with every turn (via sendDbChatMessage's Authorization
-      // header) — it's what lets supabase-service enforce RLS as this user, not as an admin.
+      // The session's tool-service access token travels with every turn (via
+      // sendDbChatMessage's Authorization header) — it's what lets db-agent-service's
+      // tool calls run as this user, not as an admin.
       const response = await sendDbChatMessage(nextMessages, token);
       setMessages(response.messages);
       if (response.type === 'form_request') {
@@ -127,7 +128,7 @@ export function DbChatPage() {
         </div>
 
         {error && <p style={{ color: theme.color.danger, padding: '0 1rem', fontSize: '0.85rem' }}>{error}</p>}
-        {!token && <p style={{ color: theme.color.textMuted, padding: '0 1rem', fontSize: '0.85rem' }}>Log in with Supabase to ask a question.</p>}
+        {!token && <p style={{ color: theme.color.textMuted, padding: '0 1rem', fontSize: '0.85rem' }}>Log in to ask a question.</p>}
 
         <form onSubmit={handleSend} style={{ display: 'flex', gap: '0.5rem', padding: '0.85rem 1rem', borderTop: `1px solid ${theme.color.border}` }}>
           <input
@@ -163,7 +164,7 @@ export function DbChatPage() {
         </form>
 
         <div style={{ borderTop: `1px solid ${theme.color.border}`, padding: '0.85rem 1rem' }}>
-          <SupabaseSessionWidget popupPlacement="above" />
+          <AuthWidget popupPlacement="above" />
         </div>
       </div>
     </div>

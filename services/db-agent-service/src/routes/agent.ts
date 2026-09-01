@@ -1,19 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppConfig } from '../config.js';
-import { DbAgentGenerationError, SupabaseAuthError, SupabaseQueryError } from '../core/errors.js';
-import { parseChatDbRequest, parseSubmitFormRequest, ValidationError } from '../schemas.js';
+import { DbAgentGenerationError, ToolServiceAuthError, ToolServiceError } from '../core/errors.js';
+import { parseChatDbRequest, ValidationError } from '../schemas.js';
 import { DbChatService } from '../services/db-chat-service.js';
-import type { FormCommitService } from '../services/form-commit-service.js';
-import type { SchemaService } from '../services/schema-service.js';
-import type { SupabaseQueryClient } from '../services/supabase-query-client.js';
+import type { ToolServiceClient } from '../services/tool-service-client.js';
 
-export function registerAgentRoutes(
-  fastify: FastifyInstance,
-  config: AppConfig,
-  supabaseQuery: SupabaseQueryClient,
-  schemaService: SchemaService,
-  formCommitService: FormCommitService,
-): void {
+export function registerAgentRoutes(fastify: FastifyInstance, config: AppConfig, toolService: ToolServiceClient): void {
   fastify.post('/agent/chat-db', async (request, reply) => {
     let parsed;
     try {
@@ -26,47 +18,23 @@ export function registerAgentRoutes(
     }
 
     try {
-      // supabaseQuery/schemaService are shared across requests (constructed once in app.ts) so
-      // SchemaService's cache actually persists between turns; DbChatService itself stays
-      // cheap and per-request, same as before.
-      return await new DbChatService(config, supabaseQuery, schemaService).chat(parsed);
+      // toolService is shared across requests (constructed once in app.ts) so its tool-catalog
+      // cache actually persists between turns; DbChatService itself stays cheap and per-request.
+      return await new DbChatService(config, toolService).chat(parsed);
     } catch (err) {
-      if (err instanceof SupabaseAuthError) {
-        // A real auth failure (missing/invalid/expired Supabase session) — distinct from an
-        // RLS-empty query result, which never reaches this branch at all.
+      if (err instanceof ToolServiceAuthError) {
+        // A real auth failure (missing/invalid/expired tool-service session) — distinct from a
+        // tool result that legitimately came back empty or `{ ok: false }`, which never reaches
+        // this branch at all.
         return reply.code(401).send({ detail: err.message });
+      }
+      if (err instanceof ToolServiceError) {
+        // Escapes chat() only from the tool-catalog fetch itself (GET /tools unreachable/failing)
+        // — every per-tool-call ToolServiceError is already caught inside DbChatService.runTool.
+        return reply.code(502).send({ detail: err.message });
       }
       if (err instanceof DbAgentGenerationError) {
         return reply.code(502).send({ detail: err.message });
-      }
-      throw err;
-    }
-  });
-
-  fastify.post('/agent/submit-form', async (request, reply) => {
-    let parsed;
-    try {
-      parsed = parseSubmitFormRequest(request.body);
-    } catch (err) {
-      if (err instanceof ValidationError) {
-        return reply.code(422).send({ detail: err.message });
-      }
-      throw err;
-    }
-
-    try {
-      return await formCommitService.submit(parsed);
-    } catch (err) {
-      if (err instanceof ValidationError) {
-        // Required/unknown-field validation failed server-side — the real gate, client-side
-        // validation is only a UX convenience.
-        return reply.code(422).send({ detail: err.message });
-      }
-      if (err instanceof SupabaseAuthError) {
-        return reply.code(401).send({ detail: err.message });
-      }
-      if (err instanceof SupabaseQueryError) {
-        return reply.code(err.status).send({ detail: err.message });
       }
       throw err;
     }

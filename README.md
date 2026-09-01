@@ -12,6 +12,7 @@ See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for the full design write-up. This 
 | `supabase-service` | 3335 | Fastify | Anon-key-only middle layer to Supabase; also verifies Supabase access tokens for other services |
 | `artifact-agent-service` | 5102 | Fastify | Drives [opencode](https://opencode.ai) (as a subprocess) to generate/update artifacts via chat |
 | `db-agent-service` | 5103 | Fastify | Answers natural-language database questions via chat, scoped to the caller's Supabase JWT through `supabase-service` (RLS-enforced) |
+| `tool-service` | 5104 | Fastify | Prisma-backed tool-call layer over Postgres (register/login/whoami/list_rows), the eventual replacement for `supabase-service` — Phase 1, runs alongside it for now |
 | `artifacts-viewer` | 4200 | Next.js | The app you open in a browser |
 
 Ports were chosen to avoid the common defaults (`3000`, `5001`–`5003`, `8000`/`8001`, `9001`/`9002`, …) that other unrelated services/containers on a shared host frequently claim. If any of these still collide in your environment, override with the `PORT` env var (or `ARTIFACTS_SERVER_URL`/`ARTIFACT_AGENT_SERVICE_URL`/`DB_AGENT_SERVICE_URL`/`SUPABASE_SERVICE_URL` on the consuming side — see below).

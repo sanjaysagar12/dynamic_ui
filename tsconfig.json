@@ -22,6 +22,9 @@
       "path": "./services/db-agent-service"
     },
     {
+      "path": "./services/tool-service"
+    },
+    {
       "path": "./tools/devctl"
     }
   ],

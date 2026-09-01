@@ -1,37 +1,11 @@
 -- ═══════════════════════════════════════════════════════════════════
---  VIJAYA ELECTRONICS ERP — INVENTORY INVARIANTS  (GUARD QUEST)
---  Run this SECOND, right after 01_create_quest.sql. These are NOT
---  optional — every constraint and trigger below is what makes the
---  ledger trustworthy even when an agent is the one writing to it.
+--  VIJAYA ELECTRONICS ERP — INVENTORY INVARIANTS
+--  Run after `prisma migrate`. These are NOT optional.
 --
 --  Why database-level and not just in the tool layer:
 --  agents write to these tables. An agent will eventually be wrong,
 --  or be talked into being wrong. The tool layer is the first line of
 --  defence; this is the one that cannot be argued with.
---
---  FIX LOG (this revision):
---   - apply_stock_movement() and create_balance_row() now run as
---     SECURITY DEFINER. Without it, these BEFORE-INSERT triggers ran
---     as the calling `authenticated` role, and stock_balances has no
---     INSERT/UPDATE policy for that role in 03_rls_quest.sql — so
---     create_material silently failed on INSERT, and every stock
---     movement's balance UPDATE was silently filtered to 0 rows by
---     RLS while the trigger still stamped balanceQtyAfter/etc. onto
---     the ledger row as if it had succeeded. Ledger and balance table
---     diverged from the very first write. Added ROW_COUNT checks so
---     any future regression here throws instead of drifting silently.
---   - Added guard_bom_lock(): job_bom_lines' qtyPerPiece/requiredQty
---     can only be set while the job is OPEN (matches set_job_bom's
---     JOB_NOT_OPEN rule). issuedQty/returnedQty updates from
---     issue_material/return_material are still allowed at any status.
---   - All five views (v_balance_integrity, v_material_leak,
---     v_job_material_cost, v_bom_vs_actual, v_reorder_alerts) now
---     declare WITH (security_invoker = on), per Supabase's linter.
---     Without it, views default to running with the view OWNER's
---     privileges rather than the querying user's, which can bypass
---     that user's RLS context. Confirmed safe here: every underlying
---     table's SELECT policy is is_authenticated_staff(), so no staff
---     member loses or gains visibility by this change.
 -- ═══════════════════════════════════════════════════════════════════
 
 -- ── 1. Quantities and rates are never negative ────────────────────
@@ -87,11 +61,7 @@ ALTER TABLE stock_movements
   );
 
 CREATE OR REPLACE FUNCTION guard_count_adjustment()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
+RETURNS TRIGGER AS $$
 DECLARE
   v_status TEXT;
 BEGIN
@@ -109,69 +79,23 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$;
--- SECURITY DEFINER here too: this only ever reads (stock_count_lines /
--- stock_counts, both of which authenticated can already SELECT), so it
--- isn't required for correctness the way it is below — but matching it
--- avoids a second inconsistent trigger-permission model in this file.
+$$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_guard_count_adjustment
   BEFORE INSERT ON stock_movements
   FOR EACH ROW EXECUTE FUNCTION guard_count_adjustment();
 
--- ── 7b. BOM lock — qtyPerPiece/requiredQty frozen once job leaves OPEN
---     set_job_bom's own precondition is "Job status must be OPEN...
---     If the job has already moved past OPEN, refuse and direct the
---     caller to add_bom_line for a rework top-up instead." That's a
---     tool-layer rule; this is the DB-level backstop for it. It does
---     NOT block issuedQty/returnedQty changes — those come from
---     issue_material/return_material and are valid at MATERIAL_ISSUED.
-CREATE OR REPLACE FUNCTION guard_bom_lock()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_status job_status;
-BEGIN
-  SELECT status INTO v_status FROM jobs WHERE id = NEW."jobId";
-
-  IF TG_OP = 'INSERT' THEN
-    IF v_status IS DISTINCT FROM 'OPEN' THEN
-      RAISE EXCEPTION
-        'Cannot add a BOM line: job status is %, must be OPEN', v_status;
-    END IF;
-  ELSIF TG_OP = 'UPDATE' THEN
-    IF (NEW."qtyPerPiece" IS DISTINCT FROM OLD."qtyPerPiece"
-        OR NEW."requiredQty" IS DISTINCT FROM OLD."requiredQty")
-       AND v_status IS DISTINCT FROM 'OPEN' THEN
-      RAISE EXCEPTION
-        'Cannot change BOM quantities: job status is %, must be OPEN', v_status;
-    END IF;
-  END IF;
-
-  RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER trg_guard_bom_lock
-  BEFORE INSERT OR UPDATE ON job_bom_lines
-  FOR EACH ROW EXECUTE FUNCTION guard_bom_lock();
-
 -- ── 8. THE LEDGER IS APPEND-ONLY ──────────────────────────────────
 --     No UPDATE. No DELETE. Ever. Corrections are REVERSAL rows.
 --     This single guard is what makes the audit trail worth trusting.
 CREATE OR REPLACE FUNCTION block_ledger_mutation()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
+RETURNS TRIGGER AS $$
 BEGIN
   RAISE EXCEPTION
     'stock_movements is append-only. Post a REVERSAL movement instead of %.',
     TG_OP;
 END;
-$$;
+$$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_block_movement_update
   BEFORE UPDATE ON stock_movements
@@ -196,19 +120,8 @@ CREATE TRIGGER trg_block_audit_update
 --
 --     Returns from the floor come back IN at the current average, so
 --     they do not distort the rate.
---
---     SECURITY DEFINER is load-bearing here: `authenticated` callers
---     have no UPDATE policy on stock_balances (by design — see
---     03_rls_quest.sql §5), so without SECURITY DEFINER this trigger's
---     UPDATE would be silently filtered to 0 rows by RLS while still
---     reporting success. The ROW_COUNT check below turns that failure
---     mode into a loud exception instead of silent ledger/balance drift.
 CREATE OR REPLACE FUNCTION apply_stock_movement()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
+RETURNS TRIGGER AS $$
 DECLARE
   v_qty      NUMERIC(18,4);
   v_rate     NUMERIC(18,4);
@@ -216,7 +129,6 @@ DECLARE
   v_new_qty  NUMERIC(18,4);
   v_new_rate NUMERIC(18,4);
   v_new_val  NUMERIC(18,2);
-  v_rows     INTEGER;
 BEGIN
   -- Lock this material's balance row for the transaction
   SELECT quantity, "averageRate", "stockValue"
@@ -264,13 +176,6 @@ BEGIN
          "updatedAt"      = NOW()
    WHERE "materialId" = NEW."materialId";
 
-  GET DIAGNOSTICS v_rows = ROW_COUNT;
-  IF v_rows = 0 THEN
-    RAISE EXCEPTION
-      'apply_stock_movement: balance UPDATE affected 0 rows for material % — check RLS/grants on stock_balances',
-      NEW."materialId";
-  END IF;
-
   -- Stamp the running balance onto the ledger row itself
   NEW."balanceQtyAfter"   := v_new_qty;
   NEW."balanceRateAfter"  := v_new_rate;
@@ -279,30 +184,22 @@ BEGIN
 
   RETURN NEW;
 END;
-$$;
+$$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_apply_stock_movement
   BEFORE INSERT ON stock_movements
   FOR EACH ROW EXECUTE FUNCTION apply_stock_movement();
 
 -- ── 10. Every material gets a balance row automatically ───────────
---      SECURITY DEFINER for the same reason as above: authenticated
---      has no INSERT policy on stock_balances, so create_material
---      would otherwise fail RLS on this INSERT the instant a real
---      (non-service_role) user creates a material.
 CREATE OR REPLACE FUNCTION create_balance_row()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
+RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO stock_balances ("materialId", quantity, "averageRate", "stockValue", "updatedAt")
   VALUES (NEW.id, 0, 0, 0, NOW())
   ON CONFLICT ("materialId") DO NOTHING;
   RETURN NEW;
 END;
-$$;
+$$ LANGUAGE plpgsql;
 
 CREATE TRIGGER trg_create_balance_row
   AFTER INSERT ON materials
@@ -310,8 +207,7 @@ CREATE TRIGGER trg_create_balance_row
 
 -- ── 11. Reconciliation view — the ledger must always equal the balance
 --        Run nightly. Any row returned means something is very wrong.
-CREATE OR REPLACE VIEW v_balance_integrity
-WITH (security_invoker = on) AS
+CREATE OR REPLACE VIEW v_balance_integrity AS
 SELECT
   m.id                        AS material_id,
   m.name                      AS material_name,
@@ -333,8 +229,7 @@ HAVING ABS(b.quantity - COALESCE(SUM(
 -- ── 12. THE LEAK REPORT — what the owner actually bought this for ──
 --        Every count difference, per material, never overwritten,
 --        accumulating until the pattern is undeniable.
-CREATE OR REPLACE VIEW v_material_leak
-WITH (security_invoker = on) AS
+CREATE OR REPLACE VIEW v_material_leak AS
 SELECT
   m.id   AS material_id,
   m.name AS material_name,
@@ -357,8 +252,7 @@ GROUP BY m.id, m.name, m.uom
 ORDER BY total_variance_value DESC NULLS LAST;
 
 -- ── 13. Per-job material cost — falls out free from the ledger ────
-CREATE OR REPLACE VIEW v_job_material_cost
-WITH (security_invoker = on) AS
+CREATE OR REPLACE VIEW v_job_material_cost AS
 SELECT
   j.id     AS job_id,
   j.number AS job_number,
@@ -379,8 +273,7 @@ LEFT JOIN stock_movements mv ON mv."jobId" = j.id
 GROUP BY j.id, j.number, p.name, j."productDescription", j.quantity;
 
 -- ── 14. BOM vs actual — where copper really goes ──────────────────
-CREATE OR REPLACE VIEW v_bom_vs_actual
-WITH (security_invoker = on) AS
+CREATE OR REPLACE VIEW v_bom_vs_actual AS
 SELECT
   j.number                    AS job_number,
   m.name                      AS material_name,
@@ -399,8 +292,7 @@ JOIN jobs j     ON j.id = bl."jobId"
 JOIN materials m ON m.id = bl."materialId";
 
 -- ── 15. Reorder alerts — standing stock only (purchasing is reactive)
-CREATE OR REPLACE VIEW v_reorder_alerts
-WITH (security_invoker = on) AS
+CREATE OR REPLACE VIEW v_reorder_alerts AS
 SELECT
   m.id, m.name, m.uom,
   b.quantity      AS on_hand,

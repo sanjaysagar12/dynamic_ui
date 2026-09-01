@@ -3,13 +3,12 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "dev": "concurrently -n supabase,artifacts,artifact-agent,db-agent,tool,viewer -c blue,green,yellow,magenta,red,cyan \"nx run supabase-service:serve\" \"nx run artifacts-server:serve\" \"nx run artifact-agent-service:serve\" \"nx run db-agent-service:serve\" \"nx run tool-service:serve\" \"nx run artifacts-viewer:dev\"",
+    "dev": "concurrently -n artifacts,artifact-agent,db-agent,tool,viewer -c green,yellow,magenta,red,cyan \"nx run artifacts-server:serve\" \"nx run artifact-agent-service:serve\" \"nx run db-agent-service:serve\" \"nx run tool-service:serve\" \"nx run artifacts-viewer:dev\"",
     "devctl": "npm run build -w tools/devctl && npm run start -w tools/devctl"
   },
   "private": true,
   "dependencies": {
     "@prisma/client": "6.19.3",
-    "@supabase/supabase-js": "^2.110.7",
     "cross-spawn": "^7.0.6",
     "dotenv": "^16.4.7",
     "fastify": "^5.11.0",

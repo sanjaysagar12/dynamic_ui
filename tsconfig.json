@@ -13,9 +13,6 @@
       "path": "./apps/artifacts-viewer"
     },
     {
-      "path": "./services/supabase-service"
-    },
-    {
       "path": "./services/artifact-agent-service"
     },
     {

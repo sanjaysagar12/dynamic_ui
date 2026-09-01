@@ -115,7 +115,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'leak', body: 'leak', userId: 1 }),
       }),
-      testFetch('direct fetch to supabase-service (:3335/data/todos)', 'http://localhost:3335/data/todos'),
+      testFetch('direct fetch to tool-service (:5104/tools)', 'http://localhost:5104/tools'),
       testFetch('direct fetch to parent /api/data/todos (:4200)', 'http://localhost:4200/api/data/todos'),
     ]);
   }

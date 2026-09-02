@@ -20,6 +20,12 @@ import setJobBomTool from './plugins/set_job_bom.js';
 import checkJobShortageTool from './plugins/check_job_shortage.js';
 import getJobTool from './plugins/get_job.js';
 import getJobBomVarianceTool from './plugins/get_job_bom_variance.js';
+import createPurchaseOrderTool from './plugins/create_purchase_order.js';
+import approvePurchaseOrderTool from './plugins/approve_purchase_order.js';
+import rejectPurchaseOrderTool from './plugins/reject_purchase_order.js';
+import recordGoodsReceiptTool from './plugins/record_goods_receipt.js';
+import getPurchasePriceHistoryTool from './plugins/get_purchase_price_history.js';
+import listPendingApprovalsTool from './plugins/list_pending_approvals.js';
 // esModuleInterop is off workspace-wide, so a default import here would read
 // a nonexistent `.default` off webpack's raw JSON module (module.exports is
 // the array itself) and silently resolve to undefined — import-equals avoids
@@ -48,6 +54,12 @@ const ALL_PLUGINS: ToolDefinition[] = [
   checkJobShortageTool,
   getJobTool,
   getJobBomVarianceTool,
+  createPurchaseOrderTool,
+  approvePurchaseOrderTool,
+  rejectPurchaseOrderTool,
+  recordGoodsReceiptTool,
+  getPurchasePriceHistoryTool,
+  listPendingApprovalsTool,
 ];
 
 export interface ToolCatalogEntry {

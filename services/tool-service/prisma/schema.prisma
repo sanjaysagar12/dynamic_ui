@@ -397,6 +397,8 @@ model PurchaseOrder {
 
   expectedDate DateTime?
   notes        String?
+  /// Set by reject_purchase_order. Null unless status = REJECTED.
+  rejectionReason String?
 
   createdById  String?
   approvedById String?

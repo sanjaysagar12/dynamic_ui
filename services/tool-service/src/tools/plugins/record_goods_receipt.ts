@@ -38,6 +38,72 @@ const tool: ToolDefinition<Args> = {
     'overrideConfirmed is a SEPARATE, STRONGER confirmation from the generic write-confirmation gate (confirmed: true): it specifically means "yes, receive against a purchase order that is not yet approved." If purchaseOrderId is given and that PO is still PENDING_APPROVAL, this call fails with PO_NOT_APPROVED unless overrideConfirmed is explicitly true. The orchestrator MUST ask the user about this as its own separate question — never inferred from the ordinary write confirmation.',
   inputSchema,
   mutates: true,
+  form: {
+    title: 'Record Goods Receipt',
+    fields: [
+      {
+        name: 'supplierId',
+        label: 'Supplier',
+        widget: 'foreign_key',
+        required: true,
+        foreignKey: { tool: 'list_rows', valueField: 'id', labelField: 'name', args: { table: 'party', where: { isSupplier: true } } },
+      },
+      {
+        name: 'purchaseOrderId',
+        label: 'Purchase order',
+        widget: 'foreign_key',
+        required: false,
+        helpText: 'Leave blank for a direct receipt not tied to a PO.',
+        foreignKey: { tool: 'list_rows', valueField: 'id', labelField: 'number', args: { table: 'purchaseOrder' } },
+      },
+      { name: 'receiptDate', label: 'Receipt date', widget: 'date', required: true },
+      { name: 'supplierInvoiceNo', label: 'Supplier invoice no.', widget: 'text', required: false },
+      { name: 'supplierInvoiceDate', label: 'Supplier invoice date', widget: 'date', required: false },
+      { name: 'supplierDcNo', label: 'Supplier DC no.', widget: 'text', required: false },
+      {
+        name: 'lines',
+        label: 'Receipt lines',
+        widget: 'line_items',
+        required: true,
+        itemFields: [
+          {
+            name: 'materialId',
+            label: 'Material',
+            widget: 'foreign_key',
+            required: true,
+            foreignKey: { tool: 'search_materials', valueField: 'id', labelField: 'name' },
+          },
+          {
+            name: 'purchaseOrderLineId',
+            label: 'PO line id',
+            widget: 'text',
+            required: false,
+            helpText: 'Matches this receipt line to a specific ordered line so its receivedQty rolls up. No PO line has a human-readable label — leave blank for a direct receipt.',
+          },
+          { name: 'receivedQty', label: 'Received qty', widget: 'number', required: true },
+          { name: 'acceptedQty', label: 'Accepted qty', widget: 'number', required: true },
+          { name: 'rejectedQty', label: 'Rejected qty', widget: 'number', required: true, defaultValue: 0 },
+          { name: 'rate', label: 'Rate', widget: 'number', required: true },
+          { name: 'hsnCode', label: 'HSN code', widget: 'text', required: false },
+          { name: 'gstRate', label: 'GST rate (%)', widget: 'number', required: false },
+          {
+            name: 'rejectionReason',
+            label: 'Rejection reason',
+            widget: 'textarea',
+            required: false,
+            // FormFieldSpec.visibleIf/required are both static (equality-only,
+            // boolean), so "required only when this line's rejectedQty > 0"
+            // can't be expressed declaratively here — the tool's own handler
+            // is the real MISSING_REJECTION_REASON gate. Shown always, with
+            // helpText carrying the actual rule, rather than a hidden field
+            // that resurfaces an error the user didn't see coming.
+            helpText: 'Required when rejectedQty > 0 for this line — enforced when the form is submitted.',
+          },
+        ],
+      },
+    ],
+    submitLabel: 'Record receipt',
+  },
   handler: async (ctx, args) => {
     for (const line of args.lines) {
       if (line.acceptedQty + line.rejectedQty !== line.receivedQty) {

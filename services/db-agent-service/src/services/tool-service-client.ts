@@ -1,5 +1,6 @@
 import type { AppConfig } from '../config.js';
 import { ToolServiceAuthError, ToolServiceError } from '../core/errors.js';
+import type { DisplaySpec, FormSpec } from '../schemas.js';
 
 export interface ToolCatalogEntry {
   name: string;
@@ -8,6 +9,8 @@ export interface ToolCatalogEntry {
   mutates: boolean;
   destructive: boolean;
   requiredRoles: string[];
+  form?: FormSpec;
+  display?: DisplaySpec;
 }
 
 export type ToolResult<T = unknown> = { ok: true; data: T } | { ok: false; error: string; code: string };

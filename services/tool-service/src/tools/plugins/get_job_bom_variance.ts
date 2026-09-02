@@ -24,6 +24,16 @@ const tool: ToolDefinition<Args> = {
   description: 'Get BOM-vs-actual variance for a job, per material — required qty vs. what was actually issued/returned, and the variance %.',
   inputSchema,
   mutates: false,
+  display: {
+    type: 'table',
+    columns: [
+      { field: 'material_name', label: 'Material' },
+      { field: 'bom_required', label: 'Required', format: 'number' },
+      { field: 'actually_issued', label: 'Issued', format: 'number' },
+      { field: 'returned', label: 'Returned', format: 'number' },
+      { field: 'variance', label: 'Variance', format: 'number' },
+    ],
+  },
   handler: async (ctx, args) => {
     const job = await ctx.prisma.job.findUnique({ where: { id: args.jobId } });
     if (!job) {

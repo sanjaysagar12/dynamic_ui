@@ -28,6 +28,14 @@ const tool: ToolDefinition<Args> = {
   inputSchema,
   requiresAuth: false,
   mutates: true,
+  form: {
+    title: 'Create Account',
+    fields: [
+      { name: 'email', label: 'Email', widget: 'text', required: true },
+      { name: 'password', label: 'Password', widget: 'text', required: true, helpText: 'At least 8 characters.' },
+    ],
+    submitLabel: 'Create account',
+  },
   handler: async (ctx, args) => {
     const existing = await ctx.prisma.user.findUnique({ where: { email: args.email } });
     if (existing) {

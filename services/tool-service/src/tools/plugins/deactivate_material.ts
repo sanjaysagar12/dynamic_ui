@@ -15,6 +15,20 @@ const tool: ToolDefinition<Args> = {
   description: 'Deactivate a material master row (never a real delete) — requires zero stock on hand.',
   inputSchema,
   mutates: true,
+  form: {
+    title: 'Deactivate Material',
+    fields: [
+      {
+        name: 'materialId',
+        label: 'Material',
+        widget: 'foreign_key',
+        required: true,
+        foreignKey: { tool: 'search_materials', valueField: 'id', labelField: 'name' },
+      },
+      { name: 'reason', label: 'Reason', widget: 'textarea', required: true },
+    ],
+    submitLabel: 'Deactivate',
+  },
   handler: async (ctx, args) => {
     const balance = await ctx.prisma.stockBalance.findUnique({ where: { materialId: args.materialId } });
     if (balance && Number(balance.quantity) !== 0) {

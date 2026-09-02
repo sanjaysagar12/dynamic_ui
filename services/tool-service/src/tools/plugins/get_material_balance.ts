@@ -12,6 +12,16 @@ const tool: ToolDefinition<Args> = {
   description: 'Get current stock balance for one or more materials.',
   inputSchema,
   mutates: false,
+  display: {
+    type: 'table',
+    columns: [
+      { field: 'material.name', label: 'Material' },
+      { field: 'material.uom', label: 'UoM' },
+      { field: 'quantity', label: 'Quantity', format: 'number' },
+      { field: 'averageRate', label: 'Avg. rate', format: 'currency' },
+      { field: 'stockValue', label: 'Value', format: 'currency' },
+    ],
+  },
   handler: async (ctx, args) => {
     const balances = await ctx.prisma.stockBalance.findMany({
       where: { materialId: { in: args.materialIds } },

@@ -27,6 +27,38 @@ const tool: ToolDefinition<Args> = {
     'Set (replace) a job\'s bill of materials, one line per material at qtyPerPiece — requiredQty is computed as qtyPerPiece × job.quantity for every line. This is the highest-value confirm-before-write tool in the whole catalog: before calling this with confirmed: true, the orchestrator MUST restate the full computed requiredQty for every line back to the user in plain text and get explicit agreement — a wrong BOM drives every downstream shortage/purchase/issue decision for the job. Only works on a job whose status is OPEN; for adding material to a job already past that stage, use add_bom_line instead (not yet available).',
   inputSchema,
   mutates: true,
+  form: {
+    title: 'Set Job BOM',
+    confirmationCopy:
+      'This replaces the full bill of materials for the job. Double-check every ' +
+      'per-piece quantity — a wrong figure multiplies across the whole run.',
+    fields: [
+      {
+        name: 'jobId',
+        label: 'Job',
+        widget: 'foreign_key',
+        required: true,
+        foreignKey: { tool: 'get_job', valueField: 'id', labelField: 'number' },
+      },
+      {
+        name: 'lines',
+        label: 'BOM lines',
+        widget: 'line_items',
+        required: true,
+        itemFields: [
+          {
+            name: 'materialId',
+            label: 'Material',
+            widget: 'foreign_key',
+            required: true,
+            foreignKey: { tool: 'search_materials', valueField: 'id', labelField: 'name' },
+          },
+          { name: 'qtyPerPiece', label: 'Qty per piece', widget: 'number', required: true },
+        ],
+      },
+    ],
+    submitLabel: 'Save BOM',
+  },
   handler: async (ctx, args) => {
     const job = await ctx.prisma.job.findUnique({ where: { id: args.jobId } });
     if (!job) {

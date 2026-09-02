@@ -19,6 +19,12 @@ const tool: ToolDefinition<Args> = {
   description: 'List rows from a table, with optional filtering, ordering, and a row limit.',
   inputSchema,
   mutates: false,
+  // The one tool whose display genuinely can't be authored in advance —
+  // `table` is a runtime arg, so there's no fixed column set. Empty columns
+  // signal the frontend to derive them from the first returned row's keys
+  // at render time; this fallback is specific to this tool, not a general
+  // display-spec behavior other tools should rely on.
+  display: { type: 'table', columns: [] },
   handler: async (ctx, args) => {
     const delegate = (ctx.prisma as Record<string, any>)[args.table];
     if (!delegate || args.table.startsWith('$') || args.table.startsWith('_') || typeof delegate.findMany !== 'function') {

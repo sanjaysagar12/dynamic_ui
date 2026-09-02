@@ -5,16 +5,25 @@ import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { useSession } from '../../lib/session/session-context';
 import { sendDbChatMessage, DbChatRequestError } from '../../lib/api/db-chat-client';
-import type { DbChatMessage, FormSpec } from '../../lib/db-chat/types';
+import type { DbChatMessage, DbChatResponsePayload } from '../../lib/db-chat/types';
 import { AuthWidget } from '../auth/AuthWidget';
-import { FormRequestCard } from './FormRequestCard';
+import { DynamicForm } from './DynamicForm';
+import { DynamicTable } from './DynamicTable';
+import { DynamicChart } from './DynamicChart';
+import { DynamicCard } from './DynamicCard';
 import { theme } from '../../lib/ui/theme';
+
+// The last non-text response, if any — a form to fill in, or a structured result to render below
+// the transcript. Cleared on the next send. Its own framing sentence (`text`, when present) is
+// already part of `messages` (see db-agent-service's wrapDisplay/form_request handling), so this
+// only ever needs to carry the structured part, not re-render the text itself.
+type PendingRich = Extract<DbChatResponsePayload, { type: 'form_request' | 'table' | 'chart' | 'card' }>;
 
 export function DbChatPage() {
   const { session } = useSession();
   const token = session?.accessToken ?? null;
   const [messages, setMessages] = useState<DbChatMessage[]>([]);
-  const [pendingForm, setPendingForm] = useState<FormSpec | null>(null);
+  const [pendingRich, setPendingRich] = useState<PendingRich | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState('');
@@ -29,7 +38,7 @@ export function DbChatPage() {
     setValue('');
     setPending(true);
     setError(null);
-    setPendingForm(null);
+    setPendingRich(null);
 
     try {
       // The session's tool-service access token travels with every turn (via
@@ -37,8 +46,8 @@ export function DbChatPage() {
       // tool calls run as this user, not as an admin.
       const response = await sendDbChatMessage(nextMessages, token);
       setMessages(response.messages);
-      if (response.type === 'form_request') {
-        setPendingForm(response.form);
+      if (response.type !== 'text') {
+        setPendingRich(response);
       }
     } catch (err) {
       setError(err instanceof DbChatRequestError ? err.message : 'Failed to reach the database agent');
@@ -113,18 +122,24 @@ export function DbChatPage() {
               Looking that up…
             </div>
           )}
-          {pendingForm && token && (
-            <FormRequestCard
-              form={pendingForm}
+          {pendingRich?.type === 'form_request' && token && (
+            <DynamicForm
+              toolName={pendingRich.toolName}
+              form={pendingRich.form}
+              prefill={pendingRich.prefill}
               messages={messages}
               token={token}
               onDone={(nextMessages) => {
                 setMessages(nextMessages);
-                setPendingForm(null);
+                setPendingRich(null);
               }}
-              onCancel={() => setPendingForm(null)}
+              onMessagesUpdate={setMessages}
+              onCancel={() => setPendingRich(null)}
             />
           )}
+          {pendingRich?.type === 'table' && <DynamicTable display={pendingRich.display} rows={pendingRich.rows} />}
+          {pendingRich?.type === 'chart' && <DynamicChart display={pendingRich.display} rows={pendingRich.rows} />}
+          {pendingRich?.type === 'card' && <DynamicCard display={pendingRich.display} data={pendingRich.data} />}
         </div>
 
         {error && <p style={{ color: theme.color.danger, padding: '0 1rem', fontSize: '0.85rem' }}>{error}</p>}

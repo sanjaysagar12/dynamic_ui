@@ -69,6 +69,8 @@ export interface ToolCatalogEntry {
   mutates: boolean;
   destructive: boolean;
   requiredRoles: string[];
+  form?: ToolDefinition['form'];
+  display?: ToolDefinition['display'];
 }
 
 export class ToolRegistry {
@@ -82,6 +84,18 @@ export class ToolRegistry {
         throw new Error(`Duplicate tool name "${def.name}" registered more than once — tool names must be unique`);
       }
       seen.set(def.name, def);
+
+      // A tool silently missing its UI spec is a bug, not a runtime case to
+      // fall back gracefully from — every mutating tool needs a form, every
+      // read tool needs a display, authored deliberately, no generic
+      // auto-derived fallback. Fail loudly at startup, same as the
+      // duplicate-name check above.
+      if (def.mutates && !def.form) {
+        throw new Error(`Tool "${def.name}" mutates but has no form spec — every mutating tool must define one`);
+      }
+      if (!def.mutates && !def.display) {
+        throw new Error(`Tool "${def.name}" is read-only but has no display spec — every read-only tool must define one`);
+      }
     }
 
     const enabledSet = new Set(enabled);
@@ -104,6 +118,8 @@ export class ToolRegistry {
       mutates: tool.mutates,
       destructive: tool.destructive ?? false,
       requiredRoles: tool.requiredRoles ?? [],
+      form: tool.form,
+      display: tool.display,
     }));
   }
 }

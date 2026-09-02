@@ -31,6 +31,49 @@ const tool: ToolDefinition<Args> = {
   description: 'Create a new job (one release against a customer PO), auto-numbered JOB-<FY>-####.',
   inputSchema,
   mutates: true,
+  form: {
+    title: 'New Job',
+    fields: [
+      {
+        name: 'customerId',
+        label: 'Customer',
+        widget: 'foreign_key',
+        required: true,
+        foreignKey: { tool: 'list_rows', valueField: 'id', labelField: 'name', args: { table: 'party', where: { isCustomer: true } } },
+      },
+      {
+        name: 'customerPoId',
+        label: 'Customer PO',
+        widget: 'foreign_key',
+        required: false,
+        foreignKey: { tool: 'list_rows', valueField: 'id', labelField: 'number', args: { table: 'customerPo' } },
+      },
+      { name: 'productDescription', label: 'Product description', widget: 'textarea', required: true },
+      { name: 'quantity', label: 'Quantity', widget: 'number', required: true },
+      { name: 'jobDate', label: 'Job date', widget: 'date', required: true },
+      { name: 'dueDate', label: 'Due date', widget: 'date', required: false },
+      {
+        name: 'type',
+        label: 'Job type',
+        widget: 'select',
+        required: false,
+        defaultValue: 'PRODUCTION',
+        options: [
+          { value: 'PRODUCTION', label: 'Production' },
+          { value: 'SAMPLE', label: 'Sample' },
+        ],
+      },
+      {
+        name: 'parentJobId',
+        label: 'Parent job (production run this sample precedes)',
+        widget: 'foreign_key',
+        required: false,
+        visibleIf: { field: 'type', equals: 'SAMPLE' },
+        foreignKey: { tool: 'list_rows', valueField: 'id', labelField: 'number', args: { table: 'job' } },
+      },
+    ],
+    submitLabel: 'Create job',
+  },
   handler: async (ctx, args) => {
     if (args.quantity <= 0) {
       return { ok: false, error: 'quantity must be a positive integer', code: 'INVALID_QTY' };

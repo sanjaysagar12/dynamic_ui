@@ -234,13 +234,13 @@ fi
 r=$(req POST /tools/list_pending_approvals/execute "{\"args\":{}}" "$SK_AUTH")
 split "$r"
 check "12. list_pending_approvals (HTTP)" 200 "$status" "$body"
-pendingIds=$(jval "$body" "j.data.purchaseOrders.map(p=>p.id).join(',')")
+pendingIds=$(jval "$body" "j.data.map(p=>p.id).join(',')")
 if [[ "$pendingIds" == *"$po3Id"* ]] || [[ "$pendingIds" == *"$po1Id"* ]]; then
   echo "      contains a still-pending PO: OK"
 else
   echo "      note: po3/po1 not pending (po3 was rejected, po1 was auto-approved) — checking any PENDING_APPROVAL row exists instead"
 fi
-anyPending=$(jval "$body" "j.data.purchaseOrders.length")
+anyPending=$(jval "$body" "j.data.length")
 [ "$anyPending" -gt "0" ] 2>/dev/null && echo "      pending rows present: OK ($anyPending)" || echo "      pending rows present: FAIL ($anyPending)"
 if grep -q "TODO(batch-f)" src/tools/plugins/list_pending_approvals.ts; then
   echo "PASS  12b. TODO(batch-f) union comment present in source"; pass=$((pass+1))

@@ -25,6 +25,23 @@ const tool: ToolDefinition<Args> = {
   description: 'Update a material master row (name, minimumLevel, hsnCode, gstRate only — uom/stockType are immutable).',
   inputSchema,
   mutates: true,
+  form: {
+    title: 'Update Material',
+    fields: [
+      {
+        name: 'materialId',
+        label: 'Material',
+        widget: 'foreign_key',
+        required: true,
+        foreignKey: { tool: 'search_materials', valueField: 'id', labelField: 'name' },
+      },
+      { name: 'name', label: 'Material name', widget: 'text', required: false },
+      { name: 'minimumLevel', label: 'Minimum level', widget: 'number', required: false },
+      { name: 'hsnCode', label: 'HSN code', widget: 'text', required: false },
+      { name: 'gstRate', label: 'GST rate (%)', widget: 'number', required: false },
+    ],
+    submitLabel: 'Save changes',
+  },
   handler: async (ctx, args) => {
     if ('uom' in args || 'stockType' in args) {
       return {

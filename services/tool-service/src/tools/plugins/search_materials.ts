@@ -30,6 +30,15 @@ const tool: ToolDefinition<Args> = {
   description: 'Search materials by name (case-insensitive substring match).',
   inputSchema,
   mutates: false,
+  display: {
+    type: 'table',
+    columns: [
+      { field: 'name', label: 'Name' },
+      { field: 'uom', label: 'UoM' },
+      { field: 'stockType', label: 'Stock type' },
+      { field: 'minimumLevel', label: 'Minimum level', format: 'number' },
+    ],
+  },
   handler: async (ctx, args) => {
     const materials = await findMaterialsByName(ctx.prisma, args.query);
     return { ok: true, data: materials };

@@ -13,6 +13,16 @@ const tool: ToolDefinition<Args> = {
     "Compute per-material stock shortfall (requiredQty − on-hand, floored at 0) for a job's current BOM. The orchestrator should call this automatically right after a successful set_job_bom, and proactively suggest raising a purchase order (create_purchase_order, not yet available) for any material with a nonzero shortfall.",
   inputSchema,
   mutates: false,
+  display: {
+    type: 'table',
+    columns: [
+      { field: 'materialName', label: 'Material' },
+      { field: 'required', label: 'Required', format: 'number' },
+      { field: 'onHand', label: 'On hand', format: 'number' },
+      { field: 'shortfall', label: 'Shortfall', format: 'number' },
+    ],
+    highlightIf: { field: 'shortfall', op: 'gt', value: 0 },
+  },
   handler: async (ctx, args) => {
     const bomLines = await ctx.prisma.jobBomLine.findMany({
       where: { jobId: args.jobId },

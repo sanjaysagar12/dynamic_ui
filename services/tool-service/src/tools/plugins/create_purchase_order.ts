@@ -37,6 +37,53 @@ const tool: ToolDefinition<Args> = {
     'Create a purchase order. Looks up or creates the supplier by name if supplierName is given. Every line MUST carry an explicit rate — this tool NEVER defaults a missing rate to a past receipt rate; if any line is missing rate it fails with MISSING_RATE and inserts nothing, and the orchestrator should ask the user or call get_purchase_price_history and retry with an explicit rate. Automatically goes to PENDING_APPROVAL (and notifies every OWNER) when the computed totalValue exceeds the configured po.approval_threshold_inr Setting, otherwise it is APPROVED immediately.',
   inputSchema,
   mutates: true,
+  form: {
+    title: 'New Purchase Order',
+    fields: [
+      {
+        name: 'supplierName',
+        label: 'Supplier name',
+        widget: 'foreign_key',
+        required: true,
+        helpText: 'Pick an existing supplier, or type a new name — it is resolved-or-created by name, not by id.',
+        foreignKey: {
+          tool: 'list_rows',
+          valueField: 'name',
+          labelField: 'name',
+          allowCreate: true,
+          args: { table: 'party', where: { isSupplier: true } },
+        },
+      },
+      {
+        name: 'lines',
+        label: 'Order lines',
+        widget: 'line_items',
+        required: true,
+        itemFields: [
+          {
+            name: 'materialId',
+            label: 'Material',
+            widget: 'foreign_key',
+            required: true,
+            foreignKey: { tool: 'search_materials', valueField: 'id', labelField: 'name' },
+          },
+          { name: 'quantity', label: 'Quantity', widget: 'number', required: true },
+          { name: 'rate', label: 'Rate', widget: 'number', required: true },
+          { name: 'hsnCode', label: 'HSN code', widget: 'text', required: false },
+          { name: 'gstRate', label: 'GST rate (%)', widget: 'number', required: false },
+        ],
+      },
+      { name: 'expectedDate', label: 'Expected date', widget: 'date', required: false },
+      {
+        name: 'triggeredByJobId',
+        label: 'Triggered by job',
+        widget: 'foreign_key',
+        required: false,
+        foreignKey: { tool: 'list_rows', valueField: 'id', labelField: 'number', args: { table: 'job' } },
+      },
+    ],
+    submitLabel: 'Create purchase order',
+  },
   handler: async (ctx, args) => {
     if (args.lines.length < 1) {
       return { ok: false, error: 'A purchase order must have at least one line', code: 'EMPTY_PO' };

@@ -24,6 +24,28 @@ const tool: ToolDefinition<Args> = {
     'Create a customer PO (the umbrella PO a job release is raised against). Looks up or creates the customer by name if customerName is given. IMPORTANT: a repeated call with the same customer and the same number returns the EXISTING PO rather than creating a duplicate — this is a lookup-or-create, not a duplicate-rejection, so treat a second call that returns an already-existing PO as a success, not a failed create.',
   inputSchema,
   mutates: true,
+  form: {
+    title: 'New Customer PO',
+    fields: [
+      {
+        name: 'customerName',
+        label: 'Customer name',
+        widget: 'foreign_key',
+        required: true,
+        helpText: 'Pick an existing customer, or type a new name — it is resolved-or-created by name, not by id.',
+        foreignKey: {
+          tool: 'list_rows',
+          valueField: 'name',
+          labelField: 'name',
+          allowCreate: true,
+          args: { table: 'party', where: { isCustomer: true } },
+        },
+      },
+      { name: 'number', label: 'PO number', widget: 'text', required: true },
+      { name: 'poDate', label: 'PO date', widget: 'date', required: false },
+    ],
+    submitLabel: 'Create customer PO',
+  },
   handler: async (ctx, args) => {
     try {
       const customer = args.customerId

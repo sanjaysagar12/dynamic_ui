@@ -19,6 +19,26 @@ const tool: ToolDefinition<Args> = {
   description: "Get a job's full detail — its BOM lines (with material info) and its running material-cost summary (issued − returned value, from the ledger).",
   inputSchema,
   mutates: false,
+  display: {
+    type: 'card',
+    fields: [
+      { field: 'number', label: 'Job number' },
+      { field: 'productDescription', label: 'Product' },
+      { field: 'quantity', label: 'Quantity', format: 'number' },
+      { field: 'status', label: 'Status', format: 'badge' },
+      { field: 'materialCost', label: 'Material cost', format: 'currency' },
+    ],
+    subTable: {
+      field: 'bomLines',
+      title: 'BOM lines',
+      columns: [
+        { field: 'material.name', label: 'Material' },
+        { field: 'requiredQty', label: 'Required', format: 'number' },
+        { field: 'issuedQty', label: 'Issued', format: 'number' },
+        { field: 'returnedQty', label: 'Returned', format: 'number' },
+      ],
+    },
+  },
   handler: async (ctx, args) => {
     const job = await ctx.prisma.job.findUnique({
       where: { id: args.jobId },

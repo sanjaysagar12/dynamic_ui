@@ -14,6 +14,14 @@ const tool: ToolDefinition<Args> = {
     "Get a material's purchase rate history from recorded goods receipts, most recent first — optionally filtered to a single supplier. Useful for suggesting a rate when create_purchase_order rejects a line for MISSING_RATE.",
   inputSchema,
   mutates: false,
+  display: {
+    type: 'chart',
+    chartType: 'line',
+    xField: 'receiptDate',
+    yField: 'rate',
+    seriesField: 'supplierName',
+    title: 'Purchase rate over time',
+  },
   handler: async (ctx, args) => {
     const lines = await ctx.prisma.goodsReceiptLine.findMany({
       where: {

@@ -19,6 +19,19 @@ const tool: ToolDefinition<Args> = {
   inputSchema,
   requiresAuth: false,
   mutates: false,
+  // login is a query (mutates: false, correctly — it writes nothing), so
+  // per the mutates<->form / !mutates<->display invariant it takes a
+  // display, not a form. The actual login UI is AuthWidget's own dedicated
+  // popup, not this generic renderer; this card is what the db-agent-chat
+  // path would show if login were ever called through it.
+  display: {
+    type: 'card',
+    fields: [
+      { field: 'userId', label: 'User ID' },
+      { field: 'email', label: 'Email' },
+      { field: 'role', label: 'Role', format: 'badge' },
+    ],
+  },
   handler: async (ctx, args) => {
     const user = await ctx.prisma.user.findUnique({ where: { email: args.email } });
     // Same INVALID_CREDENTIALS error whether the email doesn't exist or the

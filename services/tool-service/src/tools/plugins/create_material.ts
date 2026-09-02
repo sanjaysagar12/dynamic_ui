@@ -22,6 +22,53 @@ const tool: ToolDefinition<Args> = {
   description: 'Create a new material master row, auto-numbered MAT-####.',
   inputSchema,
   mutates: true,
+  form: {
+    title: 'New Material',
+    fields: [
+      {
+        name: 'name',
+        label: 'Material name',
+        widget: 'text',
+        required: true,
+        helpText: 'Checked against existing materials for near-duplicates before saving.',
+      },
+      {
+        name: 'uom',
+        label: 'Unit of measure',
+        widget: 'select',
+        required: true,
+        options: [
+          { value: 'KG', label: 'Kilograms' },
+          { value: 'NOS', label: 'Pieces' },
+          { value: 'MTR', label: 'Metres' },
+          { value: 'LTR', label: 'Litres' },
+          { value: 'ROLL', label: 'Roll' },
+          { value: 'SET', label: 'Set' },
+        ],
+      },
+      {
+        name: 'stockType',
+        label: 'Stock type',
+        widget: 'select',
+        required: true,
+        options: [
+          { value: 'STANDING', label: 'Standing stock' },
+          { value: 'PER_JOB', label: 'Per-job only' },
+        ],
+      },
+      {
+        name: 'minimumLevel',
+        label: 'Minimum level',
+        widget: 'number',
+        required: true,
+        visibleIf: { field: 'stockType', equals: 'STANDING' },
+      },
+      { name: 'hsnCode', label: 'HSN code', widget: 'text', required: false },
+      { name: 'gstRate', label: 'GST rate (%)', widget: 'number', required: false },
+      { name: 'isScrap', label: 'This is a scrap material', widget: 'checkbox', required: false, defaultValue: false },
+    ],
+    submitLabel: 'Create material',
+  },
   handler: async (ctx, args) => {
     const suspects = await findMaterialsByName(ctx.prisma, args.name.trim());
     if (suspects.length > 0) {

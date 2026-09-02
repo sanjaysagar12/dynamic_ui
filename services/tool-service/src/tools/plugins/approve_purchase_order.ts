@@ -15,6 +15,19 @@ const tool: ToolDefinition<Args> = {
   inputSchema,
   mutates: true,
   requiredRoles: ['OWNER'],
+  form: {
+    title: 'Approve Purchase Order',
+    fields: [
+      {
+        name: 'purchaseOrderId',
+        label: 'Purchase order',
+        widget: 'foreign_key',
+        required: true,
+        foreignKey: { tool: 'list_pending_approvals', valueField: 'id', labelField: 'number' },
+      },
+    ],
+    submitLabel: 'Approve',
+  },
   handler: async (ctx, args) => {
     // Reinforces the router's own requiredRoles gate rather than relying on
     // it alone — belt-and-suspenders for an owner-only mutation.

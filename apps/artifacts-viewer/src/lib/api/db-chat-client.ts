@@ -20,8 +20,9 @@ export async function sendDbChatMessage(messages: DbChatMessage[], token: string
   return response.json();
 }
 
-/** Commits a write from a filled-in, confirmed form (see components/db-chat/FormRequestCard.tsx)
- *  — same Bearer-header JWT pattern as sendDbChatMessage above. */
+/** Commits a write from a filled-in, confirmed form (see components/db-chat/DynamicForm.tsx) —
+ *  same Bearer-header JWT pattern as sendDbChatMessage above. Submitting the form IS the
+ *  confirmation; there's no separate "are you sure" step after this. */
 export async function submitDbChatForm(payload: SubmitFormRequestPayload, token: string): Promise<DbChatResponsePayload> {
   const response = await fetch('/api/submit-form', {
     method: 'POST',

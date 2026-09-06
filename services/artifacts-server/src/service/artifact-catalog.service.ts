@@ -1,6 +1,6 @@
 import { readdir, readFile, rm, writeFile } from 'fs/promises';
 import { join, relative, sep } from 'path';
-import type { Role } from '@org/shared-auth';
+import type { Role } from '@org/shared-types';
 import { parseManifest } from '../core/manifest.js';
 import { MANIFEST_FILENAME } from '../manifest/manifest-repository.js';
 import { ArtifactNotFoundError } from '../core/errors.js';

@@ -22,14 +22,15 @@ services/
                           confirmed writes) by calling whatever tools tool-service's catalog currently offers,
                           under the caller's own tool-service JWT (port 5103); endpoint: POST /agent/chat-db
 packages/
-  shared-auth/           Shared TypeScript library — the Role type and the canonical list of valid roles
+  shared-types/          Shared TypeScript library — the Role type and the canonical list of valid roles
+                          (no auth/token logic — see §1)
 ```
 
 These services run independently and talk to each other only over HTTP; there is no shared runtime state.
 
 ---
 
-## 1. `packages/shared-auth`
+## 1. `packages/shared-types`
 
 A tiny library shared by the Node services and the Next.js app's browser bundle. The valid-roles list lives in exactly one place — `src/lib/roles.ts` (currently `["OWNER", "STOREKEEPER"]`) — so adding or renaming a role is a one-file change instead of hunting through every service:
 
@@ -112,7 +113,7 @@ GET  /health
 ```
 `GET /tools` needs no auth and returns the same catalog to everyone — it's metadata (name, description, a Zod-derived JSON Schema for its arguments, whether it mutates/is destructive, and which roles may call it), not data. `POST /auth/verify` is deliberately a plain Fastify route, not a tool — it exists purely so other services have a stable, tool-registry-independent identity check to call.
 
-**Identity: JWTs minted by ordinary tools, not a separate auth service** (`src/auth/jwt.ts`, `src/tools/plugins/register.ts`, `login.ts`): `register` and `login` are tools like any other (`requiresAuth: false`, so `POST /tools/register/execute` and `POST /tools/login/execute` work with no bearer token), except their handler calls `signToken({ sub, email, role }, JWT_SECRET)` and returns `{ accessToken, userId, email, role }`. The token is a plain `jsonwebtoken`-signed JWT (7-day expiry) — `tool-service` is the only process holding `JWT_SECRET`, so it's the only one that can mint or verify one; every other service treats it as opaque and asks `/auth/verify`. `register` defaults a new account to the least-privileged role (`STOREKEEPER`) unless the caller supplies a known role from `@org/shared-auth`'s `isRole()`.
+**Identity: JWTs minted by ordinary tools, not a separate auth service** (`src/auth/jwt.ts`, `src/tools/plugins/register.ts`, `login.ts`): `register` and `login` are tools like any other (`requiresAuth: false`, so `POST /tools/register/execute` and `POST /tools/login/execute` work with no bearer token), except their handler calls `signToken({ sub, email, role }, JWT_SECRET)` and returns `{ accessToken, userId, email, role }`. The token is a plain `jsonwebtoken`-signed JWT (7-day expiry) — `tool-service` is the only process holding `JWT_SECRET`, so it's the only one that can mint or verify one; every other service treats it as opaque and asks `/auth/verify`. `register` defaults a new account to the least-privileged role (`STOREKEEPER`) unless the caller supplies a known role from `@org/shared-types`'s `isRole()`.
 
 **The plugin tool registry** (`src/tools/registry.ts`, `src/tools/types.ts`): a `ToolDefinition` is `{ name, description, inputSchema (Zod), requiresAuth?, requiredRoles?, mutates, destructive?, handler(ctx, args) }`. Every plugin file under `src/tools/plugins/` is imported explicitly into a fixed `ALL_PLUGINS` array in `registry.ts` — not discovered via a runtime directory scan — because the `serve`/`build` targets bundle the whole app into one `dist/main.js` via webpack, where `fs.readdirSync` against the plugins folder would silently find nothing at runtime even though it appears to work under a dev-time loader. A second file, `tools.enabled.json`, is a flat array of names that gates which of the registered plugins are actually reachable, independent of whether they're implemented — a way to ship a tool disabled before it's ready for use. Adding a new tool means: write the plugin file, add it to `ALL_PLUGINS`, add its name to `tools.enabled.json`.
 
@@ -277,6 +278,22 @@ Lets a user ask natural-language questions about the data instead of building or
 | Backend services (`artifacts-server`, both agents, `tool-service`) shouldn't need public exposure | The browser only ever calls `artifacts-viewer`'s own `/api/*` routes (§6) — including artifact content itself, via `/api/artifact-proxy` — which reach every backend service server-side; none of `getArtifactsServerUrl()`/`getArtifactAgentServiceUrl()`/`getDbAgentServiceUrl()`/`getToolServiceUrl()` are `NEXT_PUBLIC_*`, so none of those addresses ever reach client code |
 
 `services/artifacts-server/artifacts/sandbox-security-test/` is a live artifact that exercises every row in this table it's positioned to reach from inside a sandboxed iframe and reports pass/fail for each — open it any time to re-verify the sandbox after changing anything here.
+
+---
+
+## Planned test layout
+
+Not yet implemented — this section only records where each layer of the test plan will live, so scripts land in the right project instead of a new ad hoc top-level folder. Nx convention used throughout: tests that only exercise one project's own internals live inside that project; tests that need multiple *running* services (or a browser) get their own project.
+
+| Layer | What it tests | Where it lives | Runner |
+|---|---|---|---|
+| 1. Database invariants | Constraints/triggers in `prisma/migrations` + `prisma/inventory_guards.sql`, concurrency under row locking | `services/tool-service/test/db/` | pgTAP, or Vitest/Jest + raw `pg` client, each test in `BEGIN; …; ROLLBACK;`, against a Testcontainers Postgres with migrations applied fresh |
+| 2. Tool layer | Each `ToolDefinition.handler` in-process; the HTTP contract (`tools.router.ts`'s error-code translation, the `confirmed` gate, auth) | `services/tool-service/test/tools/` (in-process) and `services/tool-service/test/http/` (over HTTP) | Vitest/Jest + Prisma for the first; `supertest`/`undici` against a running instance for the second; `prisma migrate reset` + a seed script between files |
+| 3. Agent behavior | Whether `db-agent-service` calls (or refuses) the right tool, tone/interpretation checks | `services/db-agent-service/evals/` | promptfoo/Braintrust/DeepEval, run against `db-agent-service` with a mocked `tool-service` that logs calls instead of executing them; nightly/pre-release only, not on every PR |
+| 4. UI/renderer | Interaction tests, visual regression, accessibility | `apps/artifacts-viewer-e2e/` (a dedicated Nx `-e2e` app, generated with `@nx/next:e2e` or `@nx/playwright`) | Playwright/Cypress, Percy/Chromatic, `@axe-core/playwright` |
+| 5. Performance | Load/latency, query plans, cost-per-turn | `perf/` (root-level — spans multiple running services, not owned by one project) | k6/Artillery scripts; `EXPLAIN ANALYZE` notes alongside; cost pulled from Anthropic's usage API, not a test runner |
+| 6. End-to-end scenarios | Full business flows through the real UI or the API in sequence, each ending in `SELECT * FROM v_balance_integrity` returning zero rows | `apps/artifacts-viewer-e2e/scenarios/` (UI-driven) or `services/tool-service/test/e2e/` (API-only, via `supertest`/`fetch`, if there's no UI for a path yet) | Playwright, or Vitest + `supertest`/`fetch` |
+| 7. Demo rehearsal | Human ritual — not automated | n/a | The only tooling is a reset script/button (`tools/devctl/` or a `prisma db seed` command), not a test suite |
 
 ---
 

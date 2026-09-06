@@ -20,7 +20,7 @@
   ],
   "references": [
     {
-      "path": "../../packages/shared-auth/tsconfig.lib.json"
+      "path": "../../packages/shared-types/tsconfig.lib.json"
     }
   ]
 }

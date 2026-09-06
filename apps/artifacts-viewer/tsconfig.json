@@ -51,7 +51,7 @@
   ],
   "references": [
     {
-      "path": "../../packages/shared-auth"
+      "path": "../../packages/shared-types"
     }
   ]
 }

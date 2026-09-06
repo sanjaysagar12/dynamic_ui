@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ROLES } from '@org/shared-auth';
+import { ROLES } from '@org/shared-types';
 import { useSession } from '../../lib/session/session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../../hooks/useArtifactSrc';

@@ -1,4 +1,4 @@
-import { ROLES } from '@org/shared-auth';
+import { ROLES } from '@org/shared-types';
 import type { Provider } from './config.js';
 
 export class ValidationError extends Error {}

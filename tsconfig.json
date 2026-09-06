@@ -7,7 +7,7 @@
       "path": "./services/artifacts-server"
     },
     {
-      "path": "./packages/shared-auth"
+      "path": "./packages/shared-types"
     },
     {
       "path": "./apps/artifacts-viewer"

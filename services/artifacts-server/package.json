@@ -69,6 +69,6 @@
   "dependencies": {
     "fastify": "^5.11.0",
     "mime-types": "^3.0.2",
-    "@org/shared-auth": "*"
+    "@org/shared-types": "*"
   }
 }

@@ -1,4 +1,4 @@
-import { isRole, type Role } from '@org/shared-auth';
+import { isRole, type Role } from '@org/shared-types';
 
 export interface ArtifactManifest {
   roles: Role[];

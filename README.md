@@ -130,7 +130,7 @@ services/artifacts-server/      Static artifact server (+ services/artifacts-ser
 services/tool-service/          The only service holding a database credential (Prisma) — login/register/whoami/list_rows/... as tools
 services/artifact-agent-service/ Drives opencode to generate/update artifacts (chat-artifact)
 services/db-agent-service/      Answers database questions over chat via tool-service's tool catalog (chat-db)
-packages/shared-auth/           Shared Role types
+packages/shared-types/          Shared Role types (no auth/token logic — that lives in tool-service)
 ```
 
 Full details, request flows, and the security model: **[ARCHITECTURE.md](./ARCHITECTURE.md)**.

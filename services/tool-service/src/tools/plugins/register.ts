@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import * as bcrypt from 'bcrypt';
-import { isRole } from '@org/shared-auth';
+import { isRole } from '@org/shared-types';
 import { UserRole } from '@prisma/client';
 import type { ToolDefinition } from '../types.js';
 import { signToken } from '../../auth/jwt.js';
@@ -8,7 +8,7 @@ import { loadConfig } from '../../config.js';
 
 // Self-registration defaults to the least-privileged role rather than trusting
 // a caller-supplied role uncritically; a caller-supplied role is only honored
-// if it's one of shared-auth's known roles.
+// if it's one of shared-types's known roles.
 const DEFAULT_ROLE = 'STOREKEEPER';
 const BCRYPT_COST = 12;
 

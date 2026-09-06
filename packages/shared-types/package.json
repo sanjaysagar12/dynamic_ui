@@ -1,5 +1,5 @@
 {
-  "name": "@org/shared-auth",
+  "name": "@org/shared-types",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     }
   },
   "nx": {
-    "name": "shared-auth"
+    "name": "shared-types"
   },
   "dependencies": {
     "tslib": "^2.3.0"

@@ -78,6 +78,9 @@
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.7",
-    "@types/bcrypt": "^5.0.2"
+    "@types/bcrypt": "^5.0.2",
+    "@testcontainers/postgresql": "^12.1.0",
+    "pg": "^8.23.0",
+    "@types/pg": "^8.23.1"
   }
 }

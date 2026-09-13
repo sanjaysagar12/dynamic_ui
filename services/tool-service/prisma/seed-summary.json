@@ -1,0 +1,160 @@
+{
+  "users": {
+    "owner": {
+      "email": "owner@vijaya.test",
+      "password": "VijayaOwner#2026",
+      "userId": "c9a1b467-9332-43eb-aba5-65eebfc7dc22",
+      "role": "OWNER"
+    },
+    "storekeeper": {
+      "email": "storekeeper@vijaya.test",
+      "password": "VijayaStore#2026",
+      "userId": "bd106d6e-bf47-4899-b54a-0468b7ff33fd",
+      "role": "STOREKEEPER"
+    }
+  },
+  "settings": {
+    "po.approval_threshold_inr": "50000"
+  },
+  "materials": {
+    "wire": {
+      "id": "b76dc4ee-c8af-4cbd-8160-37a63f4e0c28",
+      "code": "MAT-0001",
+      "name": "22 SWG Copper Wire"
+    },
+    "ferrite": {
+      "id": "01bd9443-e6fb-4aee-92b9-edea07fde14f",
+      "code": "MAT-0002",
+      "name": "Ferrite Core E-30"
+    },
+    "bobbin": {
+      "id": "4e8b27e0-16d4-471e-a2a6-26bda504038b",
+      "code": "MAT-0003",
+      "name": "Bobbin Type B"
+    },
+    "varnish": {
+      "id": "e9b963ef-cbc2-4bfc-bc6f-15094ff7be8b",
+      "code": "MAT-0004",
+      "name": "Insulation Varnish"
+    },
+    "copperScrap": {
+      "id": "a6ab287c-cb59-44bc-8aa9-d21acd649403",
+      "code": "MAT-0005",
+      "name": "Copper Scrap"
+    },
+    "duplicateRejectionConfirmed": true
+  },
+  "suppliers": {
+    "chennaiWireTraders": {
+      "id": "8139d87f-6d9f-4468-b0ef-c003a361fe50",
+      "name": "Chennai Wire Traders"
+    },
+    "coimbatoreFerriteSupplies": {
+      "name": "Coimbatore Ferrite Supplies"
+    }
+  },
+  "openingPurchaseOrder": {
+    "number": "PO-2627-0001",
+    "id": "4dd74d06-facc-46d6-8525-86cd7a69cb6e",
+    "status": "APPROVED",
+    "totalValue": "26432"
+  },
+  "openingGoodsReceipt": {
+    "number": "GRN-2627-0001",
+    "id": "d6119ee0-d7fc-4391-87de-75c4c4045528"
+  },
+  "reversibleMovement": {
+    "id": "561950fd-4bda-416a-b792-8ed362e6ae45",
+    "type": "RECEIPT",
+    "material": "22 SWG Copper Wire",
+    "quantity": "20",
+    "grnNumber": "GRN-2627-0001",
+    "supplierName": "Chennai Wire Traders"
+  },
+  "customers": {
+    "brightLedSolutions": {
+      "id": "a072d3c6-f7b6-475d-bcd5-612fd7af975f",
+      "name": "BrightLED Solutions",
+      "customerPoNumber": "BLS-PO-0118"
+    },
+    "sunPowerSolar": {
+      "id": "9e9a9946-d167-494d-8c48-a862ca41c038",
+      "name": "SunPower Solar Pvt Ltd",
+      "customerPoNumber": "SPS-PO-0042"
+    },
+    "southernRailways": {
+      "id": "ac9032c3-d417-4a47-a319-0939c59bb8d9",
+      "name": "Southern Railways – Coimbatore Division",
+      "customerPoNumber": "SR-CPO-0031"
+    }
+  },
+  "job": {
+    "number": "JOB-2627-0001",
+    "id": "583bd68f-1191-4b1b-8590-4b9e663122bc",
+    "productDescription": "Transformer Coil Assembly",
+    "quantity": 500,
+    "finalShortage": [
+      {
+        "materialId": "b76dc4ee-c8af-4cbd-8160-37a63f4e0c28",
+        "materialName": "22 SWG Copper Wire",
+        "required": 25,
+        "onHand": 19,
+        "shortfall": 6
+      },
+      {
+        "materialId": "01bd9443-e6fb-4aee-92b9-edea07fde14f",
+        "materialName": "Ferrite Core E-30",
+        "required": 500,
+        "onHand": 295,
+        "shortfall": 205
+      },
+      {
+        "materialId": "4e8b27e0-16d4-471e-a2a6-26bda504038b",
+        "materialName": "Bobbin Type B",
+        "required": 500,
+        "onHand": 0,
+        "shortfall": 500
+      }
+    ]
+  },
+  "pendingPurchaseOrder": {
+    "number": "PO-2627-0002",
+    "id": "8d562d79-191f-4ff7-9fb6-c21d7bf4605d",
+    "status": "PENDING_APPROVAL",
+    "totalValue": "67260"
+  },
+  "historicalStockCount": {
+    "number": "CNT-2627-0001",
+    "id": "3b7eac00-c7b1-4acc-b01a-7d8431d00a4e",
+    "status": "APPROVED",
+    "materialsWithDifference": 2,
+    "unexplainedMaterial": "Ferrite Core E-30"
+  },
+  "finalMaterialBalances": [
+    {
+      "material": "22 SWG Copper Wire",
+      "quantity": "19",
+      "averageRate": "850"
+    },
+    {
+      "material": "Ferrite Core E-30",
+      "quantity": "295",
+      "averageRate": "18"
+    },
+    {
+      "material": "Bobbin Type B",
+      "quantity": "0",
+      "averageRate": "0"
+    },
+    {
+      "material": "Insulation Varnish",
+      "quantity": "0",
+      "averageRate": "0"
+    },
+    {
+      "material": "Copper Scrap",
+      "quantity": "0",
+      "averageRate": "0"
+    }
+  ]
+}

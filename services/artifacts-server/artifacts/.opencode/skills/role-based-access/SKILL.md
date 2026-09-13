@@ -5,20 +5,25 @@ description: "USE WHEN an artifact needs different views, permissions, or visibl
 
 # Role-based access in artifacts
 
-## Never guess role values — always call get_schema first
+## Never guess role values — always call get_tools first
 
-A real bug that shipped in this system: an artifact hardcoded `var ROLE_OWNER = 'owner'` (lowercase) while the database actually stores `'OWNER'` (uppercase). Every comparison silently failed and every user saw the most-restrictive role's view, including actual Owners. The root cause was guessing instead of checking.
+A real bug that shipped in this system: an artifact hardcoded `var ROLE_OWNER = 'owner'` (lowercase) while the backend actually stores `'OWNER'` (uppercase). Every comparison silently failed and every user saw the most-restrictive role's view, including actual Owners. The root cause was guessing instead of checking.
 
-**Before writing any role constant or comparison, call `get_schema` and read the exact enum values it reports for the role column** (e.g. `role (public.app_role, allowed: OWNER, STOREKEEPER)`). Use those exact strings, exact casing, everywhere — in JS constants, in `<option value="...">` attributes, in comparisons. Never invent a casing convention.
+**Before writing any role constant or comparison, call `get_tools` and read the exact `requiredRoles` values it reports for the tools you're gating** (e.g. a tool listing `required roles: OWNER`). Use those exact strings, exact casing, everywhere — in JS constants, in `<option value="...">` attributes, in comparisons. Never invent a casing convention.
 
 ## Determining "who am I"
 
-The artifact is never handed the current user's id or role directly — there is no session token, cookie, or identity passed into the sandboxed iframe (see AGENTS.md's postMessage section: the artifact holds no credentials at all). The only way to find out who the current user is is to query through the bridge and reason about what comes back:
+The artifact is never handed the current user's id or role directly — there is no session token, cookie, or identity passed into the sandboxed iframe (see AGENTS.md's postMessage section: the artifact holds no credentials at all). Call the `whoami` tool through the bridge to find out — it returns `{ userId, email, role }` directly, resolved server-side from the caller's real session:
 
-- If your data model has a `users`-style table where a row's primary key IS the Supabase auth user id (check via `get_schema` — no separate `authUserId` column, `id` itself is the FK), and Row-Level Security scopes reads to "your own row unless you're privileged", then:
-  - `request('GET', 'users', undefined, undefined, 'order=created_at.asc')` returns **only your own row** for a restricted role, but **every row** for a privileged role (RLS is what does this, not application code).
-  - Use that signal: if more than one row comes back, or a row with the top-level role appears, you're looking at a privileged view.
-- **Fail safe, always**: default `state.currentRole` to the *most restrictive* role before this detection resolves, and only elevate on an explicit, exact match against a value that came from `get_schema` or from the query result itself — never elevate on the absence of evidence. If detection is ambiguous (empty result, unexpected shape), stay at the restrictive default and surface a clear error rather than guessing upward.
+```javascript
+callTool('whoami', {}).then(function (identity) {
+  state.currentRole = identity.role;
+  renderForRole();
+});
+```
+
+- **Fail safe, always**: default `state.currentRole` to the *most restrictive* role (or "unknown") until this call resolves, and only switch to what `whoami` actually reports — never guess or elevate based on the absence of a response. If the call fails or hasn't resolved yet, stay at the restrictive default and let the UI show a loading state rather than the privileged one.
+- Don't try to infer role from what rows come back on some other read (e.g. "if I see every row, I must be privileged") — a tool's own scoping isn't guaranteed to work that way, and it's needless guesswork when `whoami` already gives you the real answer directly.
 
 ## Gating UI by role
 

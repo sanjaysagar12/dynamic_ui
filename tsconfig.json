@@ -7,19 +7,19 @@
       "path": "./services/artifacts-server"
     },
     {
-      "path": "./packages/shared-auth"
+      "path": "./packages/shared-types"
     },
     {
       "path": "./apps/artifacts-viewer"
-    },
-    {
-      "path": "./services/supabase-service"
     },
     {
       "path": "./services/artifact-agent-service"
     },
     {
       "path": "./services/db-agent-service"
+    },
+    {
+      "path": "./services/tool-service"
     },
     {
       "path": "./tools/devctl"

@@ -2,8 +2,8 @@ import type { DbChatMessage, DbChatResponsePayload, SubmitFormRequestPayload } f
 
 export class DbChatRequestError extends Error {}
 
-/** `token` is the caller's current Supabase session JWT — the same one the backend's
- *  supabase-service uses to enforce Row-Level Security, sent as a Bearer header so the
+/** `token` is the caller's current tool-service session token — the same one the backend's
+ *  tool-service uses to authenticate and scope its tool calls, sent as a Bearer header so the
  *  /api/chat-db BFF route can forward it to db-agent-service without it ever sitting in the body. */
 export async function sendDbChatMessage(messages: DbChatMessage[], token: string): Promise<DbChatResponsePayload> {
   const response = await fetch('/api/chat-db', {
@@ -20,8 +20,9 @@ export async function sendDbChatMessage(messages: DbChatMessage[], token: string
   return response.json();
 }
 
-/** Commits a write from a filled-in, confirmed form (see components/db-chat/FormRequestCard.tsx)
- *  — same Bearer-header JWT pattern as sendDbChatMessage above. */
+/** Commits a write from a filled-in, confirmed form (see components/db-chat/DynamicForm.tsx) —
+ *  same Bearer-header JWT pattern as sendDbChatMessage above. Submitting the form IS the
+ *  confirmation; there's no separate "are you sure" step after this. */
 export async function submitDbChatForm(payload: SubmitFormRequestPayload, token: string): Promise<DbChatResponsePayload> {
   const response = await fetch('/api/submit-form', {
     method: 'POST',

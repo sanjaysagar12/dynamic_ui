@@ -1,4 +1,4 @@
-import type { Role } from '@org/shared-auth';
+import type { Role } from '@org/shared-types';
 
 export interface ArtifactCatalogEntry {
   slug: string;

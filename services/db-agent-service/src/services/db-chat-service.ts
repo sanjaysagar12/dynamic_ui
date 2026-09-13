@@ -1,140 +1,83 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { AppConfig } from '../config.js';
-import { DbAgentGenerationError, SupabaseAuthError, SupabaseQueryError } from '../core/errors.js';
-import type { ChatDbRequest, ChatDbResponse, FormSpec } from '../schemas.js';
-import { buildFormSpec } from './form-spec-builder.js';
-import { RLS_BEHAVIOR_GUIDANCE } from './schema-context.js';
-import type { SchemaService } from './schema-service.js';
-import type { SupabaseQueryClient } from './supabase-query-client.js';
+import { DbAgentGenerationError, ToolServiceAuthError, ToolServiceError } from '../core/errors.js';
+import type { ChatDbRequest, ChatDbResponse, ChatMessage, SubmitFormRequest } from '../schemas.js';
+import { TOOL_RESULT_GUIDANCE } from './tool-guidance.js';
+import type { ToolCatalogEntry, ToolResult, ToolServiceClient } from './tool-service-client.js';
 
-const QUERY_TABLE_TOOL: Anthropic.Tool = {
-  name: 'query_table',
-  description:
-    'Read rows from a single known table, scoped to the caller\'s own Supabase permissions ' +
-    '(Row-Level Security). Returns an empty list both when there are no matching rows and when ' +
-    'the caller is not permitted to see them — these two cases are indistinguishable on purpose ' +
-    'and both simply mean "nothing to report".',
-  input_schema: {
+/** Builds the Anthropic-facing input schema for one tool — tool-service's own args schema,
+ *  unmodified, EXCEPT for a mutating tool's `required` array, which is dropped entirely. A
+ *  mutating tool call no longer reaches tool-service directly at all (see runTurn's mutatingUse
+ *  short-circuit below) — it only ever supplies prefill hints for the form, real validation
+ *  happens later at actual submission. Leaving `required` in place made the model reluctant to
+ *  call the tool at all on a vague request ("add a material") since it couldn't satisfy fields
+ *  it believed were mandatory to the call itself — dropping it removes that structural pressure,
+ *  on top of the prose instruction in the tool description/system prompt telling it the same
+ *  thing. A read-only tool's `required` is untouched — those calls execute for real. */
+function toInputSchema(entry: ToolCatalogEntry): Anthropic.Tool.InputSchema {
+  const raw = isRecord(entry.inputSchema) ? entry.inputSchema : {};
+  const properties = isRecord(raw.properties) ? { ...raw.properties } : {};
+  const required = entry.mutates
+    ? []
+    : Array.isArray(raw.required)
+      ? raw.required.filter((r): r is string => typeof r === 'string')
+      : [];
+
+  return {
     type: 'object',
-    properties: {
-      table: { type: 'string', description: 'Exact table name, e.g. "products" or "stock_transactions".' },
-      filters: {
-        type: 'object',
-        description: 'Optional exact-match column filters, e.g. {"category_id": "..."}. Values must be strings.',
-        additionalProperties: { type: 'string' },
-      },
-      order: { type: 'string', description: 'Optional sort, "column.asc" or "column.desc".' },
-      limit: { type: 'number', description: 'Optional max row count.' },
-    },
-    required: ['table'],
-  },
-};
+    properties,
+    required,
+    ...(typeof raw.additionalProperties === 'boolean' ? { additionalProperties: raw.additionalProperties } : {}),
+  };
+}
 
-const WRITE_TABLE_TOOL: Anthropic.Tool = {
-  name: 'write_table',
-  description:
-    'Delete a single row, scoped to the caller\'s own Supabase permissions (Row-Level Security) ' +
-    '— a write the caller isn\'t allowed to make is rejected the same way an unauthorized API ' +
-    'call would be. Do NOT use this tool for create or update — call request_form for those so ' +
-    'the user sees and fills a proper form instead of a value you guessed or parsed from prose. ' +
-    'This is destructive/irreversible: you MUST NOT call this tool until you have first replied ' +
-    'in plain text explaining exactly what you are about to do — the table, the operation, and ' +
-    'which row — and the user has clearly replied confirming that specific action in a later ' +
-    'message. Only set `confirmed: true` once that has actually happened; the tool refuses the ' +
-    'call otherwise.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      operation: { type: 'string', enum: ['delete'] },
-      table: { type: 'string', description: 'Exact table name, e.g. "products".' },
-      id: { type: 'string', description: 'Row id to delete.' },
-      confirmed: {
-        type: 'boolean',
-        description: 'Must be true, and must only be true after the user explicitly confirmed this exact action in their own message.',
-      },
-    },
-    required: ['operation', 'table', 'confirmed'],
-  },
-};
+function toToolDescription(entry: ToolCatalogEntry): string {
+  if (!entry.mutates) return entry.description;
+  return (
+    `${entry.description} This action changes data. As soon as the user's intent clearly points to ` +
+    'this tool, call it immediately — pass along whatever arguments you can infer from the ' +
+    'conversation, or call it with none at all if you can\'t infer any; do NOT ask the user to type ' +
+    'the details in chat first, and do NOT wait for a more complete request. Calling this tool never ' +
+    'writes anything by itself — it hands the user a structured form (pre-filled with whatever you ' +
+    'passed) where they supply, correct, or complete every value and explicitly confirm.'
+  );
+}
 
-const REQUEST_FORM_TOOL: Anthropic.Tool = {
-  name: 'request_form',
-  description:
-    'Ask the user to fill in (or confirm) the fields for an insert or update through a ' +
-    'schema-driven form rendered in the chat, instead of guessing a value or asking a free-text ' +
-    'follow-up question. Call this whenever the user\'s request implies creating or updating a ' +
-    'row and any field is missing or ambiguous — and still call it, with every value already ' +
-    'known filled into known_values, even when nothing is missing, so the user sees and confirms ' +
-    'exactly what will be written before it happens. This ends your turn; the actual write only ' +
-    'happens if and when the user submits that form, through a separate endpoint you are not ' +
-    'involved in — do not also call write_table for the same change.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      table: { type: 'string', description: 'Exact table name, e.g. "products".' },
-      operation: { type: 'string', enum: ['insert', 'update'] },
-      match: {
-        type: 'object',
-        description: 'Required for update: { "id": "<row id>" }. Identify the row via query_table first — never guess an id.',
-        properties: { id: { type: 'string' } },
-      },
-      intro: {
-        type: 'string',
-        description: 'One short sentence shown above the form explaining what it is for, e.g. "Let\'s add the new product."',
-      },
-      fields: {
-        type: 'array',
-        items: { type: 'string' },
-        description:
-          'Real column names relevant to this write. Any column that is required (NOT NULL, no ' +
-          'default) is always included even if you omit it here, so you do not need to enumerate ' +
-          'every required column yourself — just the ones worth showing for this specific change.',
-      },
-      known_values: {
-        type: 'object',
-        description:
-          'Values already confidently known from the conversation or a related record — becomes ' +
-          'that field\'s prefilled default. Leave a field out entirely rather than guess.',
-        additionalProperties: true,
-      },
-    },
-    required: ['table', 'operation', 'intro'],
-  },
-};
+function toAnthropicTools(catalog: ToolCatalogEntry[]): Anthropic.Tool[] {
+  return catalog.map((entry) => ({
+    name: entry.name,
+    description: toToolDescription(entry),
+    input_schema: toInputSchema(entry),
+  }));
+}
 
-/** `schemaDescription` comes from SchemaService.describe() — a live read of the actual deployed
- *  schema for this turn, not a hand-maintained copy that can drift from reality. */
-function buildSystemPrompt(schemaDescription: string): string {
+function buildSystemPrompt(): string {
   return `
-You are a database assistant for an internal inventory system. You read data with the
-query_table tool. All access is scoped to the caller's own Supabase permissions via Row-Level
-Security; you cannot see or change more than they're allowed to, and must never imply otherwise.
+You are a database assistant for an internal inventory system. Your available tools are listed
+for you dynamically, fetched fresh each turn — read each tool's own description and input schema
+to know what it does and what arguments it needs; never assume a tool exists beyond what's
+actually offered, and never invent arguments a tool's schema doesn't define.
 
-${schemaDescription}
+${TOOL_RESULT_GUIDANCE}
 
-${RLS_BEHAVIOR_GUIDANCE}
+Calling a tool that changes data does NOT write anything by itself — it hands the user a form to
+review and confirm, pre-filled with whatever arguments you were able to infer. This means you must
+NEVER ask the user clarifying questions in plain text before calling a data-changing tool — not
+even when the request is vague or has no details at all ("I need to add a material", "raise a PO"
+is already enough). The moment their intent points at a specific tool, call it right away, with
+as many arguments as you can infer — zero is fine. The form is the ONLY place details get asked
+for; a text question asking "what's the name / unit / quantity?" duplicates what the form already
+does and adds a pointless extra round trip. Never claim a change has been made — only the user's
+own form submission does that.
 
-When the user's request implies inserting or updating a row and any relevant field is missing or
-ambiguous, call request_form rather than asking a free-text follow-up question or guessing a
-value — never invent a value for a field the user hasn't given you. If every field the write
-needs is already known with certainty from the conversation, still call request_form (with
-known_values covering all of them) so the user sees and explicitly confirms exactly what will be
-written, rather than it happening silently. The write itself only happens if the user submits
-that form — you are not involved in that step and must not also call write_table for the same
-change.
+When a read-only tool's result comes back, respond with ONE short sentence of framing — never a
+markdown table, bulleted list, or restatement of individual rows/values in your text. The result
+is rendered directly as a table, chart, or card immediately alongside your sentence, so anything
+you repeat from it is pure duplication the user sees twice.
 
-write_table is for deleting a row only. Before calling it: reply in plain text first, describing
-precisely what you intend to do — the table and which row (quote identifying details, not just a
-raw id, when you have them) — and ask the user to confirm. Do not call write_table in that same
-turn. Only call it, with confirmed: true, after the user's own later message clearly agrees to
-that specific action; if their reply is ambiguous or changes the request, describe the (possibly
-updated) plan again and wait for another explicit confirmation. Never chain multiple writes off
-of one confirmation — each distinct write needs its own explanation and its own confirmation.
-
-If a query_table, write_table, or request_form call fails with a genuine error (marked is_error,
-distinct from an empty read result), tell the user briefly that you ran into a problem, without
-technical detail, and don't guess at an outcome. Keep answers concise and grounded only in what
-the tools actually returned.
+If a tool call fails with a genuine error, tell the user briefly that you ran into a problem,
+without technical detail, and don't guess at an outcome. Keep answers concise and grounded only
+in what the tools actually returned.
 `.trim();
 }
 
@@ -143,8 +86,7 @@ export class DbChatService {
 
   constructor(
     private readonly config: AppConfig,
-    private readonly supabaseQuery: SupabaseQueryClient,
-    private readonly schemaService: SchemaService,
+    private readonly toolService: ToolServiceClient,
   ) {
     if (!config.anthropicApiKey) {
       throw new DbAgentGenerationError('ANTHROPIC_API_KEY is not configured for db-agent-service');
@@ -155,16 +97,77 @@ export class DbChatService {
   async chat(request: ChatDbRequest): Promise<ChatDbResponse> {
     const model = request.model || this.config.defaultModel;
     const messages: Anthropic.MessageParam[] = request.messages.map((m) => ({ role: m.role, content: m.content }));
-    // Fetched once per turn, cached process-wide inside SchemaService — not re-fetched on every
-    // tool round-trip within this same turn's loop below.
-    const systemPrompt = buildSystemPrompt(await this.schemaService.describe(request.jwt));
+    const catalog = await this.toolService.fetchToolCatalog();
+    return this.runTurn(model, messages, catalog, request.messages, request.jwt);
+  }
+
+  /** Commits a write from a form the user filled in and confirmed (POST /agent/submit-form).
+   *  Calls tool-service directly with confirmed: true — form submission IS the confirmation, no
+   *  further model round-trip needed to decide whether to proceed. */
+  async submitForm(request: SubmitFormRequest): Promise<ChatDbResponse> {
+    const catalog = await this.toolService.fetchToolCatalog();
+    const entry = catalog.find((e) => e.name === request.toolName);
+    if (!entry) {
+      return this.textResponse(`Unknown tool "${request.toolName}".`, request.messages);
+    }
+    if (!entry.mutates) {
+      return this.textResponse(`"${request.toolName}" is a read-only tool and can't be submitted as a form.`, request.messages);
+    }
+
+    try {
+      const result = await this.toolService.executeTool(request.jwt, entry.name, request.args, true);
+      if (result.ok) {
+        return this.textResponse(`✓ ${describeSuccess(entry, result.data)}`, request.messages);
+      }
+      // A handler-level rejection (e.g. DUPLICATE_MATERIAL_SUSPECTED, which carries a suggested
+      // existing row in `data.suggestion`) is a legitimate outcome the user needs to see and act
+      // on — not a silent HTTP error, and not a dead end either. Reopen the same form, prefilled
+      // with exactly what they submitted, so they can fix the one offending field instead of
+      // retyping the whole request in chat from scratch.
+      return this.reopenForm(entry, request, `Couldn't complete that: ${result.error}${describeRejectionDetail(result)}`);
+    } catch (err) {
+      if (err instanceof ToolServiceAuthError) throw err;
+      if (err instanceof ToolServiceError) {
+        return this.reopenForm(entry, request, `Couldn't complete that: ${err.message}`);
+      }
+      throw err;
+    }
+  }
+
+  private textResponse(text: string, priorMessages: ChatMessage[]): ChatDbResponse {
+    return { type: 'text', text, messages: [...priorMessages, { role: 'assistant', content: text }] };
+  }
+
+  private reopenForm(entry: ToolCatalogEntry, request: SubmitFormRequest, text: string): ChatDbResponse {
+    return {
+      type: 'form_request',
+      toolName: entry.name,
+      form: entry.form!,
+      prefill: request.args,
+      text,
+      messages: [...request.messages, { role: 'assistant', content: text }],
+    };
+  }
+
+  private async runTurn(
+    model: string,
+    messages: Anthropic.MessageParam[],
+    catalog: ToolCatalogEntry[],
+    outwardMessages: ChatMessage[],
+    jwt: string,
+  ): Promise<ChatDbResponse> {
+    const catalogByName = new Map(catalog.map((entry) => [entry.name, entry]));
+    const tools = toAnthropicTools(catalog);
+    const systemPrompt = buildSystemPrompt();
 
     let reply = '';
+    let lastRead: { entry: ToolCatalogEntry; data: unknown } | null = null;
+
     for (let iteration = 0; iteration < this.config.maxToolIterations; iteration++) {
       // On the last allowed iteration, stop offering tools at all so the model is forced to
       // answer in text instead of requesting yet another round-trip that we won't act on.
       const allowTools = iteration < this.config.maxToolIterations - 1;
-      const response = await this.callAnthropic(model, messages, allowTools, systemPrompt);
+      const response = await this.callAnthropic(model, messages, allowTools ? tools : undefined, systemPrompt);
 
       const textBlocks = response.content.filter((b): b is Anthropic.TextBlock => b.type === 'text');
       const toolUses = allowTools ? response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use') : [];
@@ -174,39 +177,34 @@ export class DbChatService {
         break;
       }
 
-      // request_form ends the turn the moment it succeeds — the conversation must pause for the
-      // user to actually fill and submit the form (a separate endpoint), not keep looping tools.
-      // On failure (bad table, missing match.id, ...) it falls through to the normal tool-result
-      // handling below instead, so the model can see the error and retry.
-      const formToolUse = toolUses.find((t) => t.name === 'request_form');
-      if (formToolUse) {
-        const outcome = await this.runRequestForm(request.jwt, formToolUse);
-        if (outcome.ok) {
-          // Safe to return without resolving any sibling tool_use in this same response (unlikely,
-          // but possible) — this ends the turn, so `messages` below is never sent back to Anthropic.
-          return {
-            type: 'form_request',
-            content: outcome.intro,
-            form: outcome.form,
-            messages: [...request.messages, { role: 'assistant', content: outcome.intro }],
-          };
-        }
-        // Failed: the loop continues, so every tool_use in this response still needs a matching
-        // tool_result next turn — not just the one that failed — or the next Anthropic call errors.
-        messages.push({ role: 'assistant', content: toAssistantContent(response.content) });
-        const toolResults: Anthropic.ToolResultBlockParam[] = [];
-        for (const toolUse of toolUses) {
-          toolResults.push(toolUse.id === formToolUse.id ? outcome.toolResult : await this.runTool(request.jwt, toolUse));
-        }
-        messages.push({ role: 'user', content: toolResults });
-        continue;
+      // A mutating tool is never actually executed here — it hands control to the form flow
+      // instead. If the model asked for one alongside other calls in the same batch, none of
+      // this batch is executed; the whole turn ends on the form request.
+      const mutatingUse = toolUses.find((tu) => catalogByName.get(tu.name)?.mutates);
+      if (mutatingUse) {
+        const entry = catalogByName.get(mutatingUse.name)!;
+        const framing = textBlocks.map((b) => b.text).join('\n').trim();
+        const outward = framing ? [...outwardMessages, { role: 'assistant' as const, content: framing }] : outwardMessages;
+        return {
+          type: 'form_request',
+          toolName: entry.name,
+          form: entry.form!,
+          prefill: isRecord(mutatingUse.input) ? mutatingUse.input : undefined,
+          text: framing || undefined,
+          messages: outward,
+        };
       }
 
       messages.push({ role: 'assistant', content: toAssistantContent(response.content) });
 
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
       for (const toolUse of toolUses) {
-        toolResults.push(await this.runTool(request.jwt, toolUse));
+        const entry = catalogByName.get(toolUse.name);
+        const { result, resultBlock } = await this.runReadTool(jwt, toolUse, entry);
+        toolResults.push(resultBlock);
+        if (entry && result && result.ok) {
+          lastRead = { entry, data: result.data };
+        }
       }
       messages.push({ role: 'user', content: toolResults });
     }
@@ -215,17 +213,19 @@ export class DbChatService {
       reply = "I wasn't able to find an answer to that — could you rephrase the question?";
     }
 
-    return {
-      type: 'text',
-      content: reply,
-      messages: [...request.messages, { role: 'assistant', content: reply }],
-    };
+    const outwardMessagesNext: ChatMessage[] = [...outwardMessages, { role: 'assistant', content: reply }];
+
+    if (lastRead && lastRead.entry.display) {
+      return wrapDisplay(lastRead.entry, lastRead.data, reply, outwardMessagesNext);
+    }
+
+    return { type: 'text', text: reply, messages: outwardMessagesNext };
   }
 
   private async callAnthropic(
     model: string,
     messages: Anthropic.MessageParam[],
-    allowTools: boolean,
+    tools: Anthropic.Tool[] | undefined,
     systemPrompt: string,
   ): Promise<Anthropic.Message> {
     try {
@@ -233,7 +233,7 @@ export class DbChatService {
         model,
         max_tokens: 1024,
         system: systemPrompt,
-        tools: allowTools ? [QUERY_TABLE_TOOL, WRITE_TABLE_TOOL, REQUEST_FORM_TOOL] : undefined,
+        tools,
         messages,
       });
     } catch (err) {
@@ -241,129 +241,80 @@ export class DbChatService {
     }
   }
 
-  private async runTool(jwt: string, toolUse: Anthropic.ToolUseBlock): Promise<Anthropic.ToolResultBlockParam> {
-    if (toolUse.name === 'query_table') {
-      return this.runQueryTable(jwt, toolUse);
-    }
-    if (toolUse.name === 'write_table') {
-      return this.runWriteTable(jwt, toolUse);
-    }
-    return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: `Unknown tool "${toolUse.name}"` };
-  }
-
-  private async runQueryTable(jwt: string, toolUse: Anthropic.ToolUseBlock): Promise<Anthropic.ToolResultBlockParam> {
-    const input = toolUse.input as { table?: unknown; filters?: unknown; order?: unknown; limit?: unknown };
-    if (typeof input.table !== 'string' || !input.table) {
-      return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: 'table is required' };
-    }
-
-    try {
-      const rows = await this.supabaseQuery.listTable(jwt, {
-        table: input.table,
-        filters: isStringRecord(input.filters) ? input.filters : undefined,
-        order: typeof input.order === 'string' ? input.order : undefined,
-        limit: typeof input.limit === 'number' ? input.limit : undefined,
-      });
-      return { type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(rows) };
-    } catch (err) {
-      return this.toToolResultOrThrow(toolUse.id, err, 'The query could not be completed (a genuine error, not a permissions restriction).');
-    }
-  }
-
-  /** Delete-only now — create/update go through request_form + POST /agent/submit-form instead,
-   *  so a write's field values always come from a form the user actually saw, never a value this
-   *  tool call guessed or parsed out of prose. */
-  private async runWriteTable(jwt: string, toolUse: Anthropic.ToolUseBlock): Promise<Anthropic.ToolResultBlockParam> {
-    const input = toolUse.input as { operation?: unknown; table?: unknown; id?: unknown; confirmed?: unknown };
-
-    if (input.confirmed !== true) {
-      return {
-        type: 'tool_result',
-        tool_use_id: toolUse.id,
-        is_error: true,
-        content: 'Not confirmed. Explain the exact change to the user in plain text and wait for their explicit confirmation before calling write_table again.',
-      };
-    }
-    if (typeof input.table !== 'string' || !input.table) {
-      return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: 'table is required' };
-    }
-    if (input.operation !== 'delete') {
-      return {
-        type: 'tool_result',
-        tool_use_id: toolUse.id,
-        is_error: true,
-        content: 'write_table only supports operation "delete" — use request_form for create/update.',
-      };
-    }
-    if (typeof input.id !== 'string' || !input.id) {
-      return { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: 'id is required for delete' };
-    }
-
-    try {
-      await this.supabaseQuery.deleteRow(jwt, input.table, input.id);
-      return { type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify({ deleted: true, id: input.id }) };
-    } catch (err) {
-      return this.toToolResultOrThrow(toolUse.id, err, 'The change could not be made (a genuine error, not necessarily a permissions restriction).');
-    }
-  }
-
-  /** Builds the FormSpec for a successful request_form call. Returns a tool-error result instead
-   *  (rather than throwing) for anything the model can plausibly fix and retry — an unknown table,
-   *  or a missing match.id on an update — so the loop keeps going instead of failing the turn. */
-  private async runRequestForm(
+  /** Executes one read-only tool call (a mutating one never reaches here — see runTurn). Every
+   *  result — success or a handler-level `{ ok: false }` — is fed back to the model as tool_result
+   *  content; only a genuine transport/validation/auth failure is `is_error`, and a 401 aborts the
+   *  whole turn rather than becoming a tool result at all. */
+  private async runReadTool(
     jwt: string,
     toolUse: Anthropic.ToolUseBlock,
-  ): Promise<{ ok: true; form: FormSpec; intro: string } | { ok: false; toolResult: Anthropic.ToolResultBlockParam }> {
-    const input = toolUse.input as {
-      table?: unknown;
-      operation?: unknown;
-      match?: unknown;
-      intro?: unknown;
-      fields?: unknown;
-      known_values?: unknown;
-    };
-    const err = (content: string): { ok: false; toolResult: Anthropic.ToolResultBlockParam } => ({
-      ok: false,
-      toolResult: { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content },
-    });
-
-    if (typeof input.table !== 'string' || !input.table) return err('table is required');
-    if (input.operation !== 'insert' && input.operation !== 'update') return err('operation must be "insert" or "update"');
-    if (typeof input.intro !== 'string' || !input.intro) return err('intro is required');
-
-    let match: { id: string } | undefined;
-    if (input.operation === 'update') {
-      const m = isRecord(input.match) ? input.match : undefined;
-      if (typeof m?.id !== 'string' || !m.id) {
-        return err('match.id is required for operation "update" — identify the row via query_table first, do not guess an id.');
-      }
-      match = { id: m.id };
+    entry: ToolCatalogEntry | undefined,
+  ): Promise<{ result: ToolResult | null; resultBlock: Anthropic.ToolResultBlockParam }> {
+    if (!entry) {
+      return {
+        result: null,
+        resultBlock: { type: 'tool_result', tool_use_id: toolUse.id, is_error: true, content: `Unknown tool "${toolUse.name}"` },
+      };
     }
 
-    const requestedFields = Array.isArray(input.fields) ? input.fields.filter((f): f is string => typeof f === 'string') : [];
-    const knownValues = isRecord(input.known_values) ? input.known_values : {};
+    const args = isRecord(toolUse.input) ? toolUse.input : {};
 
-    const { columns, constraints, enums } = await this.schemaService.getTableInfo(jwt, input.table);
-    if (columns.length === 0) {
-      return err(`Unknown table "${input.table}" — it isn't in the known schema.`);
+    try {
+      const result = await this.toolService.executeTool(jwt, toolUse.name, args, undefined);
+      return { result, resultBlock: { type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(result) } };
+    } catch (err) {
+      return { result: null, resultBlock: this.toToolResultOrThrow(toolUse.id, err) };
     }
-
-    const form = buildFormSpec(input.table, input.operation, requestedFields, knownValues, match, columns, constraints, enums);
-    return { ok: true, form, intro: input.intro };
   }
 
-  /** Shared by read and write tools: an expired/invalid session aborts the whole turn (thrown,
-   *  not fed back to the model to paper over); any other Supabase-side failure becomes a plain
-   *  tool error the model reports honestly instead of guessing at an outcome. */
-  private toToolResultOrThrow(toolUseId: string, err: unknown, message: string): Anthropic.ToolResultBlockParam {
-    if (err instanceof SupabaseAuthError) {
+  /** An expired/invalid tool-service session aborts the whole turn (thrown, not fed back to the
+   *  model to paper over); any other tool-service-side failure becomes a plain tool error the
+   *  model reports honestly instead of guessing at an outcome. */
+  private toToolResultOrThrow(toolUseId: string, err: unknown): Anthropic.ToolResultBlockParam {
+    if (err instanceof ToolServiceAuthError) {
       throw err;
     }
-    if (err instanceof SupabaseQueryError) {
-      return { type: 'tool_result', tool_use_id: toolUseId, is_error: true, content: message };
+    if (err instanceof ToolServiceError) {
+      return { type: 'tool_result', tool_use_id: toolUseId, is_error: true, content: err.message };
     }
     throw err;
   }
+}
+
+function wrapDisplay(entry: ToolCatalogEntry, data: unknown, text: string, messages: ChatMessage[]): ChatDbResponse {
+  const display = entry.display!;
+  if (display.type === 'card') {
+    const cardData = Array.isArray(data) ? (data[0] as Record<string, unknown>) : (data as Record<string, unknown>);
+    return { type: 'card', toolName: entry.name, display, data: cardData ?? {}, text, messages };
+  }
+  const rows = Array.isArray(data) ? data : [data];
+  if (display.type === 'table') {
+    return { type: 'table', toolName: entry.name, display, rows, text, messages };
+  }
+  return { type: 'chart', toolName: entry.name, display, rows, text, messages };
+}
+
+/** A handler-level `{ ok: false }` may carry extra structured context beyond its error string
+ *  (e.g. create_material's `data.suggestion` — the near-duplicate row it found). Surface it in
+ *  plain text rather than dropping it, since the user needs it to decide what to do next. */
+function describeRejectionDetail(result: Extract<ToolResult, { ok: false }>): string {
+  const data = (result as { data?: unknown }).data;
+  if (!isRecord(data)) return '';
+  const suggestion = data.suggestion;
+  if (isRecord(suggestion)) {
+    const label = suggestion.name ?? suggestion.number ?? suggestion.id;
+    if (label !== undefined) return ` (existing: ${String(label)})`;
+  }
+  return '';
+}
+
+function describeSuccess(entry: ToolCatalogEntry, data: unknown): string {
+  const title = entry.form?.title ?? entry.name;
+  if (isRecord(data)) {
+    const label = data.number ?? data.name ?? data.id;
+    if (label !== undefined) return `${title} — ${String(label)}.`;
+  }
+  return `${title} completed.`;
 }
 
 function toAssistantContent(blocks: Anthropic.ContentBlock[]): Anthropic.ContentBlockParam[] {
@@ -374,16 +325,20 @@ function toAssistantContent(blocks: Anthropic.ContentBlock[]): Anthropic.Content
     if (block.type === 'tool_use') {
       return { type: 'tool_use', id: block.id, name: block.name, input: block.input };
     }
-    // The only tools this agent exposes are query_table/write_table, and no extended-thinking/
-    // web-search/code-execution features are enabled, so text/tool_use are all we ever expect.
+    // Sonnet 5 emits these even with no explicit thinking config requested; they must be replayed
+    // back verbatim (including the signature) on the next turn or the API rejects the request —
+    // discovered live while verifying multi-turn context continuity, not something toggled here.
+    if (block.type === 'thinking') {
+      return { type: 'thinking', thinking: block.thinking, signature: block.signature };
+    }
+    if (block.type === 'redacted_thinking') {
+      return { type: 'redacted_thinking', data: block.data };
+    }
+    // No web-search/code-execution features are enabled, so nothing else is expected.
     throw new DbAgentGenerationError(`Unexpected content block type from Anthropic: ${block.type}`);
   });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return isRecord(value) && Object.values(value).every((v) => typeof v === 'string');
 }

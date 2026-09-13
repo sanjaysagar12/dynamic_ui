@@ -12,7 +12,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
   const accessToken = requireBearer(req);
   if (!accessToken) {
     return NextResponse.json(
-      { error: 'Authorization: Bearer <supabase access token> header is required' },
+      { error: 'Authorization: Bearer <access token> header is required' },
       { status: 401 },
     );
   }
@@ -33,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ sl
   const accessToken = requireBearer(req);
   if (!accessToken) {
     return NextResponse.json(
-      { error: 'Authorization: Bearer <supabase access token> header is required' },
+      { error: 'Authorization: Bearer <access token> header is required' },
       { status: 401 },
     );
   }

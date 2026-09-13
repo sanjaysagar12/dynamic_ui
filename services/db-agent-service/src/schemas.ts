@@ -13,52 +13,79 @@ export interface ChatMessage {
 
 export interface ChatDbRequest {
   messages: ChatMessage[];
-  // The caller's own Supabase access token — forwarded as-is to
-  // supabase-service on every data read, so Postgres RLS policies apply as
-  // that user. This service never holds a Supabase key of its own.
+  // The caller's own tool-service access token — forwarded as-is to tool-service on every tool
+  // call, so tool-service's own auth/role checks and each tool's own handler apply as that user.
+  // This service never holds a tool-service credential of its own and never decodes this token.
   jwt: string;
   model: string | null;
 }
 
-// A single input in a schema-driven write form — built from the live Supabase schema
-// (SchemaService), never hand-maintained per table. See form-spec-builder.ts.
+// Hand-mirrors tool-service's src/tools/types.ts FormFieldSpec/FormSpec/TableColumnSpec/DisplaySpec
+// — this repo already hand-duplicates its wire types per side (see ChatMessage above, and
+// apps/artifacts-viewer's own lib/db-chat/types.ts) rather than sharing them through a package, so
+// this follows the same convention instead of introducing a new one.
+export type FieldWidget = 'text' | 'textarea' | 'number' | 'date' | 'checkbox' | 'select' | 'foreign_key' | 'line_items';
+
 export interface FormFieldSpec {
   name: string;
   label: string;
-  type: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'foreign_key';
+  widget: FieldWidget;
   required: boolean;
-  // Only ever populated from the model's own `known_values` for this write — a DB-side
-  // column default (e.g. now()) never becomes a form default, and a required field with
-  // nothing confidently known is left blank rather than guessed.
-  default?: unknown;
-  options?: { value: unknown; label: string }[];
-  referenceTable?: string;
-  referenceLabelColumn?: string;
+  helpText?: string;
+  defaultValue?: unknown;
+  visibleIf?: { field: string; equals: unknown };
+  options?: { value: string; label: string }[];
+  foreignKey?: {
+    tool: string;
+    valueField: string;
+    labelField: string;
+    allowCreate?: boolean;
+    args?: Record<string, unknown>;
+  };
+  itemFields?: FormFieldSpec[];
 }
 
 export interface FormSpec {
-  table: string;
-  operation: 'insert' | 'update';
-  // supabase-service's PATCH/DELETE /data/:table/:id only ever matches on the `id` column
-  // today (records.service.ts), so this mirrors that rather than a generic key set.
-  match?: { id: string };
+  title: string;
   fields: FormFieldSpec[];
+  submitLabel?: string;
+  confirmationCopy?: string;
 }
 
+export interface TableColumnSpec {
+  field: string;
+  label: string;
+  format?: 'text' | 'number' | 'currency' | 'date' | 'badge';
+}
+
+export type DisplaySpec =
+  | { type: 'table'; columns: TableColumnSpec[]; highlightIf?: { field: string; op: 'gt' | 'lt' | 'neq'; value: unknown } }
+  | { type: 'chart'; chartType: 'line' | 'bar'; xField: string; yField: string; seriesField?: string; title: string }
+  | {
+      type: 'card';
+      fields: { field: string; label: string; format?: TableColumnSpec['format'] }[];
+      subTable?: { field: string; title?: string; columns: TableColumnSpec[] };
+    };
+
+// Replaces the old single-shape { type: 'text', content, messages } response — every variant still
+// carries `messages`, the full updated transcript, because this service keeps no server-side
+// conversation state between turns (ARCHITECTURE.md §5): the frontend resends the whole thing next
+// turn, so the response has to hand back everything needed to keep doing that, form/table/chart/card
+// alike. `text` on the data-bearing variants is Claude's one short sentence of framing alongside the
+// structured result (Part 3d) — never a substitute for the structure itself.
 export type ChatDbResponse =
-  | { type: 'text'; content: string; messages: ChatMessage[] }
-  | { type: 'form_request'; content: string; form: FormSpec; messages: ChatMessage[] };
-
-export interface SubmitFormRequest {
-  table: string;
-  operation: 'insert' | 'update';
-  match?: { id: string };
-  values: Record<string, unknown>;
-  // The transcript so far, so the confirmation reply can extend it coherently — mirrors
-  // ChatDbRequest.messages/ChatDbResponse.messages rather than starting a parallel history.
-  messages: ChatMessage[];
-  jwt: string;
-}
+  | { type: 'text'; text: string; messages: ChatMessage[] }
+  | { type: 'form_request'; toolName: string; form: FormSpec; prefill?: Record<string, unknown>; text?: string; messages: ChatMessage[] }
+  | { type: 'table'; toolName: string; display: Extract<DisplaySpec, { type: 'table' }>; rows: unknown[]; text?: string; messages: ChatMessage[] }
+  | { type: 'chart'; toolName: string; display: Extract<DisplaySpec, { type: 'chart' }>; rows: unknown[]; text?: string; messages: ChatMessage[] }
+  | {
+      type: 'card';
+      toolName: string;
+      display: Extract<DisplaySpec, { type: 'card' }>;
+      data: Record<string, unknown>;
+      text?: string;
+      messages: ChatMessage[];
+    };
 
 export function parseChatDbRequest(body: unknown): ChatDbRequest {
   const b = (body ?? {}) as Record<string, unknown>;
@@ -72,7 +99,7 @@ export function parseChatDbRequest(body: unknown): ChatDbRequest {
     }
   }
   if (!isNonEmptyString(b.jwt)) {
-    throw new ValidationError('jwt is required and must be the caller\'s Supabase access token');
+    throw new ValidationError('jwt is required and must be the caller\'s tool-service access token');
   }
   return {
     messages: b.messages as ChatMessage[],
@@ -81,30 +108,19 @@ export function parseChatDbRequest(body: unknown): ChatDbRequest {
   };
 }
 
-function parseMatch(value: unknown): { id: string } | undefined {
-  if (value === undefined || value === null) return undefined;
-  const m = value as Record<string, unknown>;
-  if (typeof m.id !== 'string' || !m.id) {
-    throw new ValidationError('match.id must be a non-empty string when provided');
-  }
-  return { id: m.id };
+// Submitted once the user has filled in (and, per the form's own review step, confirmed) a
+// form_request's form. `messages` is the transcript as of when the form was issued — the same
+// stateless resend-everything pattern parseChatDbRequest uses, since there's no conversationId
+// store here to key a server-side history off of.
+export interface SubmitFormRequest {
+  messages: ChatMessage[];
+  jwt: string;
+  toolName: string;
+  args: Record<string, unknown>;
 }
 
 export function parseSubmitFormRequest(body: unknown): SubmitFormRequest {
   const b = (body ?? {}) as Record<string, unknown>;
-  if (!isNonEmptyString(b.table)) {
-    throw new ValidationError('table is required');
-  }
-  if (b.operation !== 'insert' && b.operation !== 'update') {
-    throw new ValidationError('operation must be "insert" or "update"');
-  }
-  const match = parseMatch(b.match);
-  if (b.operation === 'update' && !match) {
-    throw new ValidationError('match.id is required for operation "update"');
-  }
-  if (!b.values || typeof b.values !== 'object' || Array.isArray(b.values)) {
-    throw new ValidationError('values must be an object of column -> value');
-  }
   if (!Array.isArray(b.messages)) {
     throw new ValidationError('messages must be an array');
   }
@@ -115,14 +131,18 @@ export function parseSubmitFormRequest(body: unknown): SubmitFormRequest {
     }
   }
   if (!isNonEmptyString(b.jwt)) {
-    throw new ValidationError('jwt is required and must be the caller\'s Supabase access token');
+    throw new ValidationError('jwt is required and must be the caller\'s tool-service access token');
+  }
+  if (!isNonEmptyString(b.toolName)) {
+    throw new ValidationError('toolName is required');
+  }
+  if (typeof b.args !== 'object' || b.args === null || Array.isArray(b.args)) {
+    throw new ValidationError('args must be an object');
   }
   return {
-    table: b.table,
-    operation: b.operation,
-    match,
-    values: b.values as Record<string, unknown>,
     messages: b.messages as ChatMessage[],
     jwt: b.jwt,
+    toolName: b.toolName,
+    args: b.args as Record<string, unknown>,
   };
 }

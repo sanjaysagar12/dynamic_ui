@@ -1,14 +1,16 @@
 export class ValidationError extends Error {}
 
-/** The caller's Supabase JWT was missing, invalid, or expired — a real auth failure, not an RLS-empty result. */
-export class SupabaseAuthError extends Error {}
+/** The caller's tool-service JWT was missing, invalid, or expired — a real auth failure, aborts the whole turn. */
+export class ToolServiceAuthError extends Error {}
 
-/** supabase-service rejected the query itself (bad table name, malformed filter, upstream failure) —
- *  distinct from a query that succeeded but returned zero rows because RLS filtered everything out. */
-export class SupabaseQueryError extends Error {
+/** tool-service rejected the call itself (unknown tool, invalid args, forbidden role, unconfirmed
+ *  mutation, or an upstream failure) — distinct from a call that reached the tool's handler and
+ *  came back `{ ok: false }` as a legitimate result, which is not an error at all. */
+export class ToolServiceError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
   }

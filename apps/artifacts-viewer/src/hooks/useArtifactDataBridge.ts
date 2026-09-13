@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import type { RefObject } from 'react';
-import { useSupabaseSession } from '../lib/supabase/supabase-session-context';
+import { useSession } from '../lib/session/session-context';
 
 const BRIDGE_SOURCE = 'artifact-data-bridge';
 
@@ -10,11 +10,9 @@ interface DataBridgeRequest {
   source: typeof BRIDGE_SOURCE;
   type: 'request';
   requestId: string;
-  table: string;
-  method: string;
-  id?: string;
-  body?: unknown;
-  search?: string;
+  tool: string;
+  args?: unknown;
+  confirmed?: boolean;
 }
 
 function isDataBridgeRequest(data: unknown): data is DataBridgeRequest {
@@ -22,31 +20,25 @@ function isDataBridgeRequest(data: unknown): data is DataBridgeRequest {
     return false;
   }
   const candidate = data as Record<string, unknown>;
-  return (
-    candidate.source === BRIDGE_SOURCE &&
-    candidate.type === 'request' &&
-    typeof candidate.requestId === 'string' &&
-    typeof candidate.table === 'string' &&
-    typeof candidate.method === 'string'
-  );
+  return candidate.source === BRIDGE_SOURCE && candidate.type === 'request' && typeof candidate.requestId === 'string' && typeof candidate.tool === 'string';
 }
 
 /**
- * Mediates Supabase data access for a sandboxed artifact over postMessage.
+ * Mediates tool-service data access for a sandboxed artifact over postMessage.
  *
  * Artifacts are untrusted, potentially AI-generated (and thus potentially
- * injected/malicious) content, so they never receive the Supabase access
+ * injected/malicious) content, so they never receive the session's access
  * token — they can't exfiltrate or misuse a credential they don't have. An
- * artifact instead posts `{ source: 'artifact-data-bridge', type: 'request', ... }`
+ * artifact instead posts `{ source: 'artifact-data-bridge', type: 'request', tool, args, confirmed }`
  * to `window.parent`; this hook validates the sender is really our iframe
  * (comparing `event.source`, since the sandboxed frame's `event.origin` is
- * the opaque string "null" and can't be matched normally), performs the
- * request itself using the parent's own session, and posts the result back.
- * Row-level security in Postgres — not this bridge — is what actually scopes
- * the data a given user can see or change.
+ * the opaque string "null" and can't be matched normally), calls this app's
+ * own `/api/tools/:name` route using the parent's own session, and posts the
+ * tool's `{ok, data}` / `{ok: false, error, code}` result back unmodified —
+ * see AGENTS.md's `callTool` helper for how the artifact unwraps it.
  */
 export function useArtifactDataBridge(iframeRef: RefObject<HTMLIFrameElement | null>): void {
-  const { session } = useSupabaseSession();
+  const { session } = useSession();
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -55,42 +47,27 @@ export function useArtifactDataBridge(iframeRef: RefObject<HTMLIFrameElement | n
         return;
       }
 
-      const { requestId, table, method, id, body, search } = event.data;
-      void respond(frameWindow, requestId, table, method, id, body, search);
+      const { requestId, tool, args, confirmed } = event.data;
+      void respond(frameWindow, requestId, tool, args, confirmed);
     }
 
-    async function respond(
-      target: Window,
-      requestId: string,
-      table: string,
-      method: string,
-      id: string | undefined,
-      body: unknown,
-      search: string | undefined,
-    ) {
+    async function respond(target: Window, requestId: string, tool: string, args: unknown, confirmed: boolean | undefined) {
       if (!session) {
         target.postMessage(
-          { source: BRIDGE_SOURCE, type: 'response', requestId, status: 401, body: { error: 'Not logged in to Supabase' } },
+          { source: BRIDGE_SOURCE, type: 'response', requestId, status: 401, body: { ok: false, error: 'Not logged in', code: 'UNAUTHENTICATED' } },
           '*',
         );
         return;
       }
 
       try {
-        const path = `/api/data/${encodeURIComponent(table)}${id ? `/${encodeURIComponent(id)}` : ''}${search ? `?${search}` : ''}`;
-        // Treat null the same as omitted: generated artifacts sometimes pass
-        // `null` explicitly for an unused body/id instead of leaving it out,
-        // and a GET/DELETE with any body — even "null" — is rejected by the
-        // browser before the request is even sent.
-        const hasBody = body !== undefined && body !== null;
-        const response = await fetch(path, {
-          method,
+        const response = await fetch(`/api/tools/${encodeURIComponent(tool)}`, {
+          method: 'POST',
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
-            'X-User-Id': session.userId,
-            ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+            'Content-Type': 'application/json',
           },
-          body: hasBody ? JSON.stringify(body) : undefined,
+          body: JSON.stringify({ args, confirmed }),
         });
         const text = await response.text();
         target.postMessage(
@@ -99,7 +76,7 @@ export function useArtifactDataBridge(iframeRef: RefObject<HTMLIFrameElement | n
         );
       } catch {
         target.postMessage(
-          { source: BRIDGE_SOURCE, type: 'response', requestId, status: 502, body: { error: 'Failed to reach the data layer' } },
+          { source: BRIDGE_SOURCE, type: 'response', requestId, status: 502, body: { ok: false, error: 'Failed to reach the tool layer', code: 'BRIDGE_UNREACHABLE' } },
           '*',
         );
       }

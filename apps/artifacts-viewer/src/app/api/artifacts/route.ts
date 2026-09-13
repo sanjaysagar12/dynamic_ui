@@ -5,7 +5,7 @@ export async function GET(req: NextRequest) {
   const header = req.headers.get('authorization');
   if (!header?.startsWith('Bearer ')) {
     return NextResponse.json(
-      { error: 'Authorization: Bearer <supabase access token> header is required' },
+      { error: 'Authorization: Bearer <access token> header is required' },
       { status: 401 },
     );
   }

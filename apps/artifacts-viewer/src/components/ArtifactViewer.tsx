@@ -2,18 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSupabaseSession } from '../lib/supabase/supabase-session-context';
+import { useSession } from '../lib/session/session-context';
 import { useArtifactCatalog } from '../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../hooks/useArtifactSrc';
 import { deleteArtifactRequest, renameArtifactRequest, CatalogRequestError } from '../lib/api/catalog-client';
 import type { ArtifactCatalogEntry } from '../lib/artifacts/types';
 import { ArtifactSelector } from './ArtifactSelector';
 import { ArtifactFrame } from './ArtifactFrame';
-import { SupabaseSessionWidget } from './supabase/SupabaseSessionWidget';
+import { AuthWidget } from './auth/AuthWidget';
 import { theme, secondaryButtonStyle } from '../lib/ui/theme';
 
 export function ArtifactViewer() {
-  const { session } = useSupabaseSession();
+  const { session } = useSession();
   const token = session?.accessToken ?? null;
   const [artifactPath, setArtifactPath] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
@@ -107,13 +107,13 @@ export function ArtifactViewer() {
         </nav>
 
         <div style={{ borderTop: `1px solid ${theme.color.border}`, paddingTop: '0.85rem' }}>
-          <SupabaseSessionWidget role={role} popupPlacement="above" />
+          <AuthWidget role={role} popupPlacement="above" />
         </div>
       </aside>
 
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          {!token && <p style={{ padding: '1rem', color: theme.color.textMuted }}>Log in with Supabase to view artifacts.</p>}
+          {!token && <p style={{ padding: '1rem', color: theme.color.textMuted }}>Log in to view artifacts.</p>}
           {token && catalogError && <p style={{ padding: '1rem', color: theme.color.danger }}>{catalogError}</p>}
           {token && catalogLoading && <p style={{ padding: '1rem', color: theme.color.textMuted }}>Loading artifacts…</p>}
           {token && !catalogLoading && artifacts.length === 0 && !catalogError && (

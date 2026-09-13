@@ -61,5 +61,5 @@ Logs are also written to `.devctl/logs/<service>.log` in the workspace root so t
 ## Notes
 
 - devctl itself is excluded from the Services list.
-- Projects without a `serve`/`dev` target (e.g. `shared-auth`) are shown as "Not runnable" on the Services screen rather than hidden.
+- Projects without a `serve`/`dev` target (e.g. `shared-types`) are shown as "Not runnable" on the Services screen rather than hidden.
 - devctl spawns Nx directly via `node node_modules/nx/dist/bin/nx.js` rather than `npx nx`. On Windows, `npx` resolves to `npx.cmd`, and piping a long-running task's output through that wrapper buffers it almost indefinitely — logs wouldn't stream and port checks would race against output that hadn't arrived yet.

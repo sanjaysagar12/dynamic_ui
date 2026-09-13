@@ -19,8 +19,8 @@ export interface ArtifactCatalogResult {
 
 /**
  * Lists artifacts visible to the caller, as reported by the Artifacts Server.
- * The caller's own Supabase access token is forwarded as-is — the Artifacts
- * Server verifies it (via supabase-service) and resolves the role itself, so
+ * The caller's own session access token is forwarded as-is — the Artifacts
+ * Server verifies it (via tool-service) and resolves the role itself, so
  * this layer never needs to know or choose a role. Server-side only.
  */
 export async function listArtifacts(accessToken: string): Promise<ArtifactCatalogResult> {

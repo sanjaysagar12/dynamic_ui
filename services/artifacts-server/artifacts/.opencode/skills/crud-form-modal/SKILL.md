@@ -38,10 +38,12 @@ Validate required fields and any numeric/format constraints client-side before c
 
 ## The bridge call itself
 
+Create and update are two different named tools (find both via `get_tools` — don't assume matching names like `create_x`/`update_x`, confirm they actually exist and read what arguments each one takes). This confirm button's click handler already IS the confirmation step, so it's the one place `confirmed: true` belongs — never earlier:
+
 ```javascript
 var op = id
-  ? request('PATCH', 'products', id, { name: name, price: price })
-  : request('POST', 'products', undefined, { name: name, price: price });
+  ? callTool('update_material', { materialId: id, name: name, minimumLevel: minimumLevel }, true)
+  : callTool('create_material', { name: name, uom: uom, stockType: stockType }, true);
 op.then(function (saved) {
   closeModal();
   toast(id ? 'Updated.' : 'Created.', 'success');
@@ -51,12 +53,12 @@ op.then(function (saved) {
 });
 ```
 
-Critical details that are easy to get wrong (from the postMessage bridge contract):
-- POST's response is the created row **itself**, not wrapped — same for PATCH's updated row. Only GET (list) responses are wrapped as `{ data: [...] }`.
-- Never send a body field the user didn't actually edit — omit ids/ownership columns entirely (they're applied server-side).
-- Omit unused arguments to `request(...)` entirely rather than passing `null` — a `null` body on the wrong method is rejected by the browser before the request is even sent.
-- On failure, `err.message` is the server's error text — show it in the toast rather than a generic "something went wrong", since it's often the actual reason (e.g. a constraint violation) the user needs to see.
+Critical details that are easy to get wrong (from the postMessage bridge contract — see AGENTS.md):
+- `callTool(...)` already resolves to the tool's own `data` on success (the created/updated row, unwrapped) — don't unwrap `body`/`ok` yourself again.
+- Never send an argument the user didn't actually edit, and never send one the tool's `inputSchema` doesn't define — some fields (id/ownership, or fields a tool documents as immutable after creation) are rejected or ignored server-side; check the schema rather than assuming.
+- `confirmed: true` is only sent because this call happens inside the confirm button's own click handler, after the user has already reviewed the form — never set it in a function that could fire before the user has seen a confirmation UI.
+- On failure, `err.message` is the tool's own error text — show it in the toast rather than a generic "something went wrong", since it's often the actual reason (e.g. a validation or business-rule rejection, like `create_material`'s duplicate-name check) the user needs to see.
 
-## Delete
+## Delete / deactivate
 
-Always confirm before delete (a native `window.confirm(...)` is fine for a small artifact) — a destructive action behind one accidental click is a bad pattern regardless of app size. Delete resolves to `null`; treat any non-throw as success and refresh the list.
+Not every domain has a real delete tool — some only expose a "deactivate" (soft-delete) tool instead (check `get_tools`; use whichever actually exists, don't assume). Either way: always confirm before calling it (a native `window.confirm(...)` is fine for a small artifact, or reuse the same modal) — a hard-to-reverse action behind one accidental click is a bad pattern regardless of app size, and doubly so if the tool is marked `(destructive)` in the catalog, per AGENTS.md's rule that a destructive confirmation must restate exactly what will change. `callTool(...)` resolves to whatever the tool itself returns on success (which may be `null`, or the now-deactivated row) — treat any non-throw as success and refresh the list.

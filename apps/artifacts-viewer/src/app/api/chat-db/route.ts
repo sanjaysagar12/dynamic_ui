@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { chatWithDbAgent, DbAgentServiceError } from '../../../lib/api/db-agent-service-client';
-import { extractDataAuth } from '../../../lib/http/data-request-auth';
+import { extractAccessToken } from '../../../lib/http/data-request-auth';
 import type { DbChatRequestPayload } from '../../../lib/db-chat/types';
 
 export async function POST(req: NextRequest) {
-  const auth = extractDataAuth(req);
-  if (!auth) {
-    return NextResponse.json({ error: 'Authorization: Bearer <supabase access token> header is required' }, { status: 401 });
+  const accessToken = extractAccessToken(req);
+  if (!accessToken) {
+    return NextResponse.json({ error: 'Authorization: Bearer <access token> header is required' }, { status: 401 });
   }
 
   const payload = (await req.json()) as DbChatRequestPayload;
 
   try {
-    const result = await chatWithDbAgent(payload.messages, auth.accessToken);
+    const result = await chatWithDbAgent(payload.messages, accessToken);
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof DbAgentServiceError) {

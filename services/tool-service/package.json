@@ -1,0 +1,100 @@
+{
+  "name": "@org/tool-service",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "name": "tool-service",
+    "targets": {
+      "prune-lockfile": {
+        "dependsOn": [
+          "build"
+        ],
+        "cache": true,
+        "executor": "@nx/js:prune-lockfile",
+        "outputs": [
+          "{workspaceRoot}/services/tool-service/dist/package.json",
+          "{workspaceRoot}/services/tool-service/dist/package-lock.json"
+        ],
+        "options": {
+          "buildTarget": "build"
+        }
+      },
+      "copy-workspace-modules": {
+        "dependsOn": [
+          "build"
+        ],
+        "cache": true,
+        "outputs": [
+          "{workspaceRoot}/services/tool-service/dist/workspace_modules"
+        ],
+        "executor": "@nx/js:copy-workspace-modules",
+        "options": {
+          "buildTarget": "build"
+        }
+      },
+      "prune": {
+        "dependsOn": [
+          "prune-lockfile",
+          "copy-workspace-modules"
+        ],
+        "executor": "nx:noop"
+      },
+      "serve": {
+        "continuous": true,
+        "executor": "@nx/js:node",
+        "defaultConfiguration": "development",
+        "dependsOn": [
+          "build"
+        ],
+        "options": {
+          "buildTarget": "tool-service:build",
+          "runBuildTargetDependencies": false
+        },
+        "configurations": {
+          "development": {
+            "buildTarget": "tool-service:build:development"
+          },
+          "production": {
+            "buildTarget": "tool-service:build:production"
+          }
+        }
+      },
+      "test": {
+        "options": {
+          "passWithNoTests": true
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test:layer2:tools": "jest test/tools",
+    "test:layer2:http": "jest test/http",
+    "test:layer2": "npm run test:layer2:tools && npm run test:layer2:http",
+    "db:reset:full": "tsx prisma/reset-full.ts && tsx prisma/seed.ts",
+    "db:reset:soft": "tsx prisma/reset-soft.ts && tsx prisma/seed.ts",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@org/shared-types": "*",
+    "@prisma/client": "6.19.3",
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.24.1",
+    "zod-to-json-schema": "^3.24.1"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^12.1.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^6.0.2",
+    "pg": "^8.23.0",
+    "supertest": "^7.1.1",
+    "tsx": "^4.23.13"
+  }
+}

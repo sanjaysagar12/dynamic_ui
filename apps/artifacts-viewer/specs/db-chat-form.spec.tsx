@@ -24,10 +24,10 @@ describe('FormRequestCard', () => {
   beforeEach(() => {
     global.fetch = jest.fn().mockImplementation(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
-      if (url.includes('/api/data/categories')) {
+      if (url.includes('/api/tools/list_rows')) {
         return {
           ok: true,
-          json: async () => ({ data: [{ id: 'cat-1', name: 'Widgets' }, { id: 'cat-2', name: 'Gadgets' }] }),
+          json: async () => ({ ok: true, data: [{ id: 'cat-1', name: 'Widgets' }, { id: 'cat-2', name: 'Gadgets' }] }),
         };
       }
       return { ok: true, json: async () => ({}) };

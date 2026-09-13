@@ -66,6 +66,11 @@
       }
     }
   },
+  "scripts": {
+    "test:layer2:tools": "jest test/tools",
+    "test:layer2:http": "jest test/http",
+    "test:layer2": "npm run test:layer2:tools && npm run test:layer2:http"
+  },
   "dependencies": {
     "fastify": "^5.11.0",
     "@org/shared-types": "*",
@@ -81,6 +86,8 @@
     "@types/bcrypt": "^5.0.2",
     "@testcontainers/postgresql": "^12.1.0",
     "pg": "^8.23.0",
-    "@types/pg": "^8.23.1"
+    "@types/pg": "^8.23.1",
+    "supertest": "^7.1.1",
+    "@types/supertest": "^6.0.2"
   }
 }

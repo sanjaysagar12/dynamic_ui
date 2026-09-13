@@ -9,7 +9,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const tool: ToolDefinition<Args> = {
   name: 'list_pending_approvals',
-  description: 'List everything currently awaiting OWNER approval — right now, purchase orders pending approval.',
+  description: 'List everything currently awaiting OWNER approval — purchase orders and stock counts pending approval.',
   inputSchema,
   mutates: false,
   display: {
@@ -29,19 +29,29 @@ const tool: ToolDefinition<Args> = {
       orderBy: { createdAt: 'asc' },
     });
 
-    // TODO(batch-f): union in pending StockCount rows (status ===
-    // 'PENDING_APPROVAL') once StockCount tools exist — StockCount isn't
-    // built yet, so this only returns purchase orders for now. Flat array
-    // (not wrapped in an object) so this union stays a plain concat later,
-    // and so the result maps directly onto this tool's own table display.
+    const stockCounts = await ctx.prisma.stockCount.findMany({
+      where: { status: 'PENDING_APPROVAL' },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    // Flat array (not wrapped in an object) so the two kinds concat plainly
+    // and the result maps directly onto this tool's own table display —
+    // a stock count has no supplier/totalValue, so those columns render
+    // blank for its rows.
     const now = Date.now();
-    const rows = purchaseOrders.map((po) => ({
+    const poRows = purchaseOrders.map((po) => ({
       ...po,
       supplierName: po.supplier.name,
       ageDays: Math.floor((now - po.createdAt.getTime()) / MS_PER_DAY),
     }));
+    const countRows = stockCounts.map((count) => ({
+      ...count,
+      supplierName: undefined,
+      totalValue: undefined,
+      ageDays: Math.floor((now - count.createdAt.getTime()) / MS_PER_DAY),
+    }));
 
-    return { ok: true, data: rows };
+    return { ok: true, data: [...poRows, ...countRows] };
   },
 };
 

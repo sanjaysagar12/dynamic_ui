@@ -5,7 +5,10 @@ import { createMaterial } from './materials.js';
 export interface CreateStockCountLineOverride {
   materialId?: string;
   systemQty?: number;
-  countedQty?: number;
+  /// Pass null explicitly to leave the line uncounted (matches
+  /// start_stock_count.ts's freshly-created line) — omitting the field
+  /// entirely defaults to systemQty (a fully-matching count).
+  countedQty?: number | null;
   reasonCode?: string | null;
 }
 
@@ -40,12 +43,12 @@ export async function createStockCount(
     lineInputs.map(async (line) => {
       const materialId = line.materialId ?? (await createMaterial(prisma)).id;
       const systemQty = line.systemQty ?? 0;
-      const countedQty = line.countedQty ?? systemQty;
+      const countedQty = line.countedQty === null ? null : line.countedQty ?? systemQty;
       return {
         materialId,
         systemQty,
         countedQty,
-        differenceQty: countedQty - systemQty,
+        differenceQty: countedQty === null ? null : countedQty - systemQty,
         reasonCode: line.reasonCode ?? undefined,
       };
     }),

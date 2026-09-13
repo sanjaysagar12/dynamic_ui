@@ -148,6 +148,8 @@ enum NotificationType {
   PO_PENDING_APPROVAL
   COUNT_PENDING_APPROVAL
   UNEXPLAINED_VARIANCE
+  NEGATIVE_STOCK_WARNING
+  RECOUNT_REQUIRED
 }
 
 model Notification {
@@ -650,10 +652,12 @@ model StockCountLine {
   materialId   String
 
   /// Frozen snapshot taken when counting began — never recomputed
-  systemQty  Decimal @db.Decimal(18, 4)
-  countedQty Decimal @db.Decimal(18, 4)
-  /// countedQty − systemQty (signed)
-  differenceQty Decimal @db.Decimal(18, 4)
+  systemQty  Decimal  @db.Decimal(18, 4)
+  /// Null until submit_count_line runs — a line starts life system-qty-only.
+  countedQty Decimal? @db.Decimal(18, 4)
+  /// countedQty − systemQty (signed). Null until countedQty is set —
+  /// chk_count_difference tolerates NULL under SQL's three-valued logic.
+  differenceQty Decimal? @db.Decimal(18, 4)
 
   /// SPILLAGE | EXTRA_WASTAGE | MISSING | ENTRY_ERROR | UNEXPLAINED
   reasonCode String?

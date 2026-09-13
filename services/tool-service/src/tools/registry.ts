@@ -26,6 +26,18 @@ import rejectPurchaseOrderTool from './plugins/reject_purchase_order.js';
 import recordGoodsReceiptTool from './plugins/record_goods_receipt.js';
 import getPurchasePriceHistoryTool from './plugins/get_purchase_price_history.js';
 import listPendingApprovalsTool from './plugins/list_pending_approvals.js';
+import issueMaterialTool from './plugins/issue_material.js';
+import returnMaterialTool from './plugins/return_material.js';
+import closeJobTool from './plugins/close_job.js';
+import getMovementHistoryTool from './plugins/get_movement_history.js';
+import recordScrapInTool from './plugins/record_scrap_in.js';
+import recordScrapSaleTool from './plugins/record_scrap_sale.js';
+import startStockCountTool from './plugins/start_stock_count.js';
+import submitCountLineTool from './plugins/submit_count_line.js';
+import submitStockCountTool from './plugins/submit_stock_count.js';
+import approveStockCountTool from './plugins/approve_stock_count.js';
+import rejectStockCountTool from './plugins/reject_stock_count.js';
+import reverseMovementTool from './plugins/reverse_movement.js';
 // esModuleInterop is off workspace-wide, so a default import here would read
 // a nonexistent `.default` off webpack's raw JSON module (module.exports is
 // the array itself) and silently resolve to undefined — import-equals avoids
@@ -60,6 +72,18 @@ const ALL_PLUGINS: ToolDefinition[] = [
   recordGoodsReceiptTool,
   getPurchasePriceHistoryTool,
   listPendingApprovalsTool,
+  issueMaterialTool,
+  returnMaterialTool,
+  closeJobTool,
+  getMovementHistoryTool,
+  recordScrapInTool,
+  recordScrapSaleTool,
+  startStockCountTool,
+  submitCountLineTool,
+  submitStockCountTool,
+  approveStockCountTool,
+  rejectStockCountTool,
+  reverseMovementTool,
 ];
 
 export interface ToolCatalogEntry {

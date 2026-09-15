@@ -14,8 +14,6 @@ export class ArtifactGeneratorService {
       messages: [{ role: 'user', content: request.prompt }],
       slug: request.slug,
       roles: request.roles,
-      provider: request.provider,
-      model: request.model,
     });
 
     return {
@@ -26,7 +24,6 @@ export class ArtifactGeneratorService {
       url_path: result.url_path,
       preview_url: result.preview_url,
       files_written: result.files_written,
-      provider: result.provider,
     };
   }
 }

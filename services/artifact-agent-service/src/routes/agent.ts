@@ -3,11 +3,9 @@ import type { AppConfig } from '../config.js';
 import { parseChatRequest, parseGenerateArtifactRequest, ValidationError } from '../schemas.js';
 import { ArtifactGeneratorService } from '../services/artifact-generator.js';
 import { ChatArtifactService } from '../services/chat-service.js';
-import { ArtifactGenerationError, listProviders } from '../services/providers.js';
+import { ArtifactGenerationError } from '../services/opencode-runner.js';
 
 export function registerAgentRoutes(fastify: FastifyInstance, config: AppConfig): void {
-  fastify.get('/agent/providers', async () => listProviders(config));
-
   fastify.post('/agent/generate-artifact', async (request, reply) => {
     let parsed;
     try {

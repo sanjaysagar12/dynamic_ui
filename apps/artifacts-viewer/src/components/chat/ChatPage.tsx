@@ -6,14 +6,13 @@ import { ROLES } from '@org/shared-types';
 import { useSession } from '../../lib/session/session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../../hooks/useArtifactSrc';
-import { fetchProviders, sendChatMessage, ChatRequestError } from '../../lib/api/artifact-chat-client';
+import { sendChatMessage, ChatRequestError } from '../../lib/api/artifact-chat-client';
 import { fetchSkills } from '../../lib/api/skills-client';
-import type { ChatMessage, Provider, ProviderInfo } from '../../lib/chat/types';
+import type { ChatMessage } from '../../lib/chat/types';
 import type { ArtifactCatalogEntry } from '../../lib/artifacts/types';
 import type { Skill } from '../../lib/skills/types';
 import { ArtifactFrame } from '../ArtifactFrame';
 import { AuthWidget } from '../auth/AuthWidget';
-import { ProviderSelector } from './ProviderSelector';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatComposer } from './ChatComposer';
 import { ExistingArtifactsPanel } from './ExistingArtifactsPanel';
@@ -28,8 +27,6 @@ export function ChatPage() {
   const [slug, setSlug] = useState<string | null>(null);
   const [urlPath, setUrlPath] = useState<string | null>(null);
   const [previewSlug, setPreviewSlug] = useState<string | null>(null);
-  const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [provider, setProvider] = useState<Provider>('claude');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
@@ -50,18 +47,6 @@ export function ChatPage() {
   }, []);
 
   useEffect(() => {
-    fetchProviders()
-      .then((res) => {
-        setProviders(res.providers);
-        setProvider(res.default);
-      })
-      .catch(() => {
-        // Fall back to the built-in defaults if the agent service is unreachable.
-        setProviders([
-          { id: 'claude', label: 'Claude', model: 'claude-sonnet-5' },
-          { id: 'gemini', label: 'Gemini', model: 'gemini-2.5-flash' },
-        ]);
-      });
     refreshSkills();
   }, [refreshSkills]);
 
@@ -84,7 +69,6 @@ export function ChatPage() {
         messages: nextMessages,
         slug,
         roles: ROLES.slice(),
-        provider,
       });
       setMessages(response.messages);
       setSlug(response.slug);
@@ -150,7 +134,6 @@ export function ChatPage() {
               </button>
             </div>
           </div>
-          <ProviderSelector providers={providers} provider={provider} onChange={setProvider} />
           <SkillSelector skills={skills} selected={selectedSkills} onChange={setSelectedSkills} />
           {slug && (
             <span style={{ fontSize: '0.8rem', color: theme.color.textMuted }}>

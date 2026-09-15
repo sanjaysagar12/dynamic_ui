@@ -1,6 +1,6 @@
 import 'server-only';
 import { getArtifactAgentServiceUrl } from '../config/env';
-import type { ChatRequestPayload, ChatResponsePayload, ProvidersResponsePayload } from '../chat/types';
+import type { ChatRequestPayload, ChatResponsePayload } from '../chat/types';
 import type { CreateSkillPayload, ListSkillsResponsePayload, Skill, UpdateSkillPayload } from '../skills/types';
 
 export class AgentServiceError extends Error {
@@ -28,16 +28,6 @@ export async function chatWithAgent(payload: ChatRequestPayload): Promise<ChatRe
     cache: 'no-store',
     signal: AbortSignal.timeout(950_000),
   });
-
-  if (!response.ok) {
-    throw new AgentServiceError(await parseErrorDetail(response), response.status);
-  }
-
-  return response.json();
-}
-
-export async function listAgentProviders(): Promise<ProvidersResponsePayload> {
-  const response = await fetch(new URL('/agent/providers', getArtifactAgentServiceUrl()), { cache: 'no-store' });
 
   if (!response.ok) {
     throw new AgentServiceError(await parseErrorDetail(response), response.status);

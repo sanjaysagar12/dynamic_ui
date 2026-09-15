@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, statSync } from 'fs';
 import { join, relative, sep } from 'path';
-import { PROVIDER_MODEL_PREFIX, type AppConfig, type Provider } from '../config.js';
+import { OPENCODE_MODEL, type AppConfig } from '../config.js';
 import type { ChatMessage, ChatRequest, ChatResponse } from '../schemas.js';
 import { readTitle, writeManifest } from './manifest.js';
 import { OpenCodeRunner } from './opencode-runner.js';
@@ -45,10 +45,6 @@ export class ChatArtifactService {
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
-    const provider = (request.provider || this.config.defaultProvider) as Provider;
-    const modelName = request.model || (provider === 'claude' ? this.config.anthropicModel : this.config.geminiModel);
-    const model = `${PROVIDER_MODEL_PREFIX[provider]}/${modelName}`;
-
     const isNew = request.slug == null;
     const slug = request.slug || uniqueSlug(slugify(request.messages[0].content), this.config.artifactsRoot);
     const artifactDir = join(this.config.artifactsRoot, slug);
@@ -63,7 +59,7 @@ export class ChatArtifactService {
     // history as a fallback when there's no session to continue.
     const prompt = sessionId ? request.messages[request.messages.length - 1].content : renderTranscript(request.messages);
 
-    const result = await this.opencode.run(artifactDir, prompt, model, sessionId);
+    const result = await this.opencode.run(artifactDir, prompt, OPENCODE_MODEL, sessionId);
     if (result.sessionId) {
       ChatArtifactService.sessions.set(slug, result.sessionId);
     }
@@ -82,7 +78,6 @@ export class ChatArtifactService {
       url_path: urlPath,
       preview_url: `${this.config.artifactsServerUrl.replace(/\/+$/, '')}${urlPath}`,
       files_written: filesWritten,
-      provider,
       messages: [...request.messages, { role: 'assistant', content: result.reply }],
     };
   }

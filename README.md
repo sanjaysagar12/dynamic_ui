@@ -21,7 +21,7 @@ The browser only ever talks to `artifacts-viewer`'s own origin — `artifacts-se
 ## Prerequisites
 
 - Node.js 20+ and a package manager (this repo uses `npm`)
-- The [opencode](https://opencode.ai) CLI on `PATH` (`npm i -g opencode-ai@latest`), authenticated with at least one provider (`opencode auth login`, or `ANTHROPIC_API_KEY`/`GEMINI_API_KEY` in the environment) — this is what `artifact-agent-service` actually shells out to for artifact generation
+- The [opencode](https://opencode.ai) CLI on `PATH` (`npm i -g opencode-ai@latest`), authenticated with Anthropic (`opencode auth login`, or `ANTHROPIC_API_KEY` in the environment) — this is what `artifact-agent-service` actually shells out to for artifact generation, always with a fixed model (no provider/model picker)
 - An `ANTHROPIC_API_KEY` in the environment — used directly (not via opencode) by `db-agent-service` to answer database questions
 - A Postgres database (`DATABASE_URL`) — required for login and any data-backed artifact; `tool-service` owns the schema via Prisma (`services/tool-service/prisma/schema.prisma`)
 
@@ -50,19 +50,21 @@ PORT=3400
 TOOL_SERVICE_URL=http://localhost:5104
 ```
 
-**`services/artifact-agent-service/.env`** *(required to use the Artifact Chat page)*
+**`services/artifact-agent-service/.env`** *(required to use the Artifact Chat page — see `.env.example` in that service for the full annotated list)*
 ```
-LLM_PROVIDER=gemini
-GEMINI_MODEL=gemini-2.5-flash
-ANTHROPIC_MODEL=claude-sonnet-5
 ARTIFACTS_SERVER_URL=http://localhost:3400
 PORT=5102
+
+# Optional, default shown — the artifacts filesystem root and the opencode binary/timeout.
+# ARTIFACTS_ROOT=../artifacts-server/artifacts
+# OPENCODE_BIN=opencode
+# OPENCODE_TIMEOUT_SECONDS=900
 
 # Where opencode's get_tools tool (services/artifacts-server/artifacts/.opencode/tool/get_tools.ts)
 # looks up the live tool catalog. Defaults to http://localhost:5104 if unset.
 TOOL_SERVICE_URL=http://localhost:5104
 ```
-`LLM_PROVIDER`/`*_MODEL` just pick which model opencode is told to use (`--model anthropic/<model>` or `--model google/<model>`) — actual provider credentials come from opencode's own auth (`opencode auth login`, or `ANTHROPIC_API_KEY`/`GEMINI_API_KEY` inherited from this process's environment). You can also pick the provider per-request from the chat page's model picker regardless of the default. This service holds no database credential of any kind — opencode looks up the live tool catalog through `get_tools` against `tool-service`'s open, metadata-only `GET /tools` endpoint instead of talking to a database directly.
+There's no provider/model picker — opencode is always driven with a fixed model (`OPENCODE_MODEL` in `src/config.ts`, currently `anthropic/claude-sonnet-5`); change that constant, not an env var, to move models. Actual provider credentials come from opencode's own auth (`opencode auth login`, or `ANTHROPIC_API_KEY` inherited from this process's environment, since this service's own code never reads that key itself — only opencode does). This service holds no database credential of any kind — opencode looks up the live tool catalog through `get_tools` against `tool-service`'s open, metadata-only `GET /tools` endpoint instead of talking to a database directly.
 
 **`services/db-agent-service/.env`** *(required to use the Database Chat page)*
 ```

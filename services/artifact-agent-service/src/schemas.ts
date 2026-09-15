@@ -1,5 +1,4 @@
 import { ROLES } from '@org/shared-types';
-import type { Provider } from './config.js';
 
 export class ValidationError extends Error {}
 
@@ -14,8 +13,6 @@ export interface GenerateArtifactRequest {
   prompt: string;
   slug: string | null;
   roles: string[];
-  provider: Provider | null;
-  model: string | null;
 }
 
 export interface GenerateArtifactResponse {
@@ -26,7 +23,6 @@ export interface GenerateArtifactResponse {
   url_path: string;
   preview_url: string;
   files_written: string[];
-  provider: Provider;
 }
 
 export interface ChatMessage {
@@ -38,8 +34,6 @@ export interface ChatRequest {
   messages: ChatMessage[];
   slug: string | null;
   roles: string[];
-  provider: Provider | null;
-  model: string | null;
 }
 
 export interface ChatResponse {
@@ -50,7 +44,6 @@ export interface ChatResponse {
   url_path: string;
   preview_url: string;
   files_written: string[];
-  provider: Provider;
   messages: ChatMessage[];
 }
 
@@ -78,17 +71,6 @@ export interface UpdateSkillRequest {
   content: string;
 }
 
-export interface ProviderInfo {
-  id: Provider;
-  label: string;
-  model: string;
-}
-
-export interface ProvidersResponse {
-  default: Provider;
-  providers: ProviderInfo[];
-}
-
 export function parseGenerateArtifactRequest(body: unknown): GenerateArtifactRequest {
   const b = (body ?? {}) as Record<string, unknown>;
   if (!isNonEmptyString(b.prompt)) {
@@ -98,8 +80,6 @@ export function parseGenerateArtifactRequest(body: unknown): GenerateArtifactReq
     prompt: b.prompt,
     slug: isNonEmptyString(b.slug) ? b.slug : null,
     roles: Array.isArray(b.roles) && b.roles.length > 0 ? (b.roles as string[]) : [...ROLES],
-    provider: (b.provider as Provider | null) ?? null,
-    model: isNonEmptyString(b.model) ? b.model : null,
   };
 }
 
@@ -118,8 +98,6 @@ export function parseChatRequest(body: unknown): ChatRequest {
     messages: b.messages as ChatMessage[],
     slug: isNonEmptyString(b.slug) ? b.slug : null,
     roles: Array.isArray(b.roles) && b.roles.length > 0 ? (b.roles as string[]) : [...ROLES],
-    provider: (b.provider as Provider | null) ?? null,
-    model: isNonEmptyString(b.model) ? b.model : null,
   };
 }
 

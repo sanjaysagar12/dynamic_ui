@@ -1,5 +1,6 @@
 import spawn = require('cross-spawn');
-import { ArtifactGenerationError } from './providers.js';
+
+export class ArtifactGenerationError extends Error {}
 
 export interface OpenCodeResult {
   reply: string;

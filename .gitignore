@@ -5,6 +5,9 @@ dist
 tmp
 out-tsc
 
+# generated Prisma clients (custom `output` paths — see each schema.prisma)
+apps/artifacts-viewer/src/generated
+
 # dependencies
 node_modules
 

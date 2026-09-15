@@ -17,11 +17,21 @@
       }
     }
   },
+  "scripts": {
+    "db:generate": "prisma generate --schema=prisma/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
+    "db:migrate:dev": "prisma migrate dev --schema=prisma/schema.prisma"
+  },
+  "prisma": {
+    "schema": "prisma/schema.prisma"
+  },
   "dependencies": {
     "next": "~16.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",
-    "@org/shared-types": "*"
+    "@org/shared-types": "*",
+    "@prisma/client": "6.19.3",
+    "prisma": "6.19.3"
   }
 }

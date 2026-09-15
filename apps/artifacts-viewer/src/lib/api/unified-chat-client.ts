@@ -1,4 +1,4 @@
-import type { UnifiedChatRequestPayload, UnifiedChatResponsePayload } from '../unified-chat/types';
+import type { ChatTurnRequestPayload, ChatTurnResponsePayload } from '../chat-sessions/types';
 
 export class UnifiedChatError extends Error {
   constructor(message: string, readonly status: number) {
@@ -13,20 +13,14 @@ async function parseErrorDetail(response: Response): Promise<string> {
 }
 
 /**
- * Sends a unified chat message that is automatically routed to either
- * the artifact agent (for UI/artifact generation) or database agent
- * (for data manipulation) based on the user's intent.
+ * Sends one chat turn — a `sessionId` (omitted to start a new session) plus the new user
+ * message. The server reconstructs prior history from persisted `ChatMessage` rows and routes to
+ * whichever backend agent (artifact or database) the message calls for.
  */
-export async function chatWithUnifiedAgent(payload: UnifiedChatRequestPayload, accessToken?: string): Promise<UnifiedChatResponsePayload> {
-  const headers: HeadersInit = { 'Content-Type': 'application/json' };
-
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
-  }
-
+export async function chatWithUnifiedAgent(payload: ChatTurnRequestPayload, accessToken: string): Promise<ChatTurnResponsePayload> {
   const response = await fetch('/api/chat', {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify(payload),
     cache: 'no-store',
     signal: AbortSignal.timeout(950_000),

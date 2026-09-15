@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ROLES } from '@org/shared-types';
 import { useSession } from '../../lib/session/session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../../hooks/useArtifactSrc';
 import { chatWithUnifiedAgent, UnifiedChatError } from '../../lib/api/unified-chat-client';
 import { fetchSkills } from '../../lib/api/skills-client';
+import { deleteChatSession, getChatSession, listChatSessions, renameChatSession } from '../../lib/api/chat-sessions-client';
 import type { ChatMessage } from '../../lib/chat/types';
+import type { ChatSessionSummaryDto } from '../../lib/chat-sessions/types';
 import type { DbChatResponsePayload } from '../../lib/db-chat/types';
 import type { ArtifactCatalogEntry } from '../../lib/artifacts/types';
 import type { Skill } from '../../lib/skills/types';
@@ -19,6 +20,7 @@ import { ChatComposer } from './ChatComposer';
 import { ExistingArtifactsPanel } from './ExistingArtifactsPanel';
 import { SkillsPanel } from './SkillsPanel';
 import { SkillSelector } from './SkillSelector';
+import { SessionSidebar } from './SessionSidebar';
 import { DynamicForm } from '../db-chat/DynamicForm';
 import { DynamicTable } from '../db-chat/DynamicTable';
 import { DynamicChart } from '../db-chat/DynamicChart';
@@ -31,10 +33,14 @@ import { theme, secondaryButtonStyle } from '../../lib/ui/theme';
 // handling), so this only ever needs to carry the structured part, not re-render the text itself.
 type PendingRich = Extract<DbChatResponsePayload, { type: 'form_request' | 'table' | 'chart' | 'card' }>;
 
+type PanelMode = 'pages' | 'skills' | 'chats';
+
 export function ChatPage() {
   const { session } = useSession();
   const token = session?.accessToken ?? null;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSessionSummaryDto[]>([]);
   const [slug, setSlug] = useState<string | null>(null);
   const [urlPath, setUrlPath] = useState<string | null>(null);
   const [previewSlug, setPreviewSlug] = useState<string | null>(null);
@@ -43,7 +49,7 @@ export function ChatPage() {
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [skillsPanelOpen, setSkillsPanelOpen] = useState(false);
+  const [panelMode, setPanelMode] = useState<PanelMode>('pages');
   const [pendingRich, setPendingRich] = useState<PendingRich | null>(null);
 
   const { artifacts, role } = useArtifactCatalog(token);
@@ -58,11 +64,30 @@ export function ChatPage() {
       .catch(() => setSkills([]));
   }, []);
 
+  const refreshSessions = useCallback(() => {
+    if (!token) {
+      setSessions([]);
+      return;
+    }
+    listChatSessions(token)
+      .then(setSessions)
+      .catch(() => setSessions([]));
+  }, [token]);
+
   useEffect(() => {
     refreshSkills();
   }, [refreshSkills]);
 
+  useEffect(() => {
+    refreshSessions();
+  }, [refreshSessions]);
+
   const handleSend = async (content: string) => {
+    if (!token) {
+      setError('Log in to chat.');
+      return;
+    }
+
     // Naming the skills explicitly in the message itself is more reliable
     // than relying on opencode to match the wording against each skill's
     // description on its own — and stays visible in the transcript, so
@@ -71,41 +96,27 @@ export function ChatPage() {
       selectedSkills.length > 0
         ? `Use these skills: ${selectedSkills.map((name) => `"${name}"`).join(', ')}. ${content}`
         : content;
-    const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: finalContent }];
-    setMessages(nextMessages);
+    setMessages((current) => [...current, { role: 'user', content: finalContent }]);
     setPending(true);
     setError(null);
     setPendingRich(null);
 
     try {
-      // The session's tool-service access token travels along on every turn
-      // (as an Authorization header) even for what will turn out to be an
-      // artifact request — the router only knows which agent handles a
-      // message after this call reaches the server, and a database question
-      // needs that token to have been sent at all.
-      const result = await chatWithUnifiedAgent(
-        {
-          messages: nextMessages,
-          slug,
-          roles: ROLES.slice(),
-        },
-        token ?? undefined,
-      );
+      const result = await chatWithUnifiedAgent({ sessionId: sessionId ?? undefined, message: finalContent }, token);
 
-      if (result.type === 'artifact') {
-        setMessages(result.messages);
-        setSlug(result.slug);
-        setUrlPath(result.url_path);
-        setPreviewSlug(result.slug);
+      setSessionId(result.sessionId);
+      setMessages((current) => [...current, { role: 'assistant', content: result.reply }]);
+
+      if (result.route === 'artifact' && result.artifact) {
+        setSlug(result.artifact.slug);
+        setUrlPath(result.artifact.urlPath);
+        setPreviewSlug(result.artifact.slug);
         setPreviewReloadKey((k) => k + 1);
-        return;
+      } else if (result.route === 'db' && result.db && result.db.type !== 'text') {
+        setPendingRich(result.db);
       }
 
-      const response = result.response;
-      setMessages(response.messages);
-      if (response.type !== 'text') {
-        setPendingRich(response);
-      }
+      refreshSessions();
     } catch (err) {
       setError(err instanceof UnifiedChatError ? err.message : 'Failed to reach the agent service');
     } finally {
@@ -128,12 +139,62 @@ export function ChatPage() {
   };
 
   const handleNew = () => {
+    setSessionId(null);
     setSlug(null);
     setPreviewSlug(null);
     setUrlPath(null);
     setMessages([]);
     setError(null);
     setPendingRich(null);
+  };
+
+  const handleLoadSession = async (id: string) => {
+    if (!token) return;
+    setError(null);
+    try {
+      const detail = await getChatSession(id, token);
+      setSessionId(detail.id);
+      setMessages(detail.messages.map((m) => ({ role: m.role, content: m.content })));
+      setPendingRich(null);
+      if (detail.currentArtifactSlug) {
+        setSlug(detail.currentArtifactSlug);
+        setPreviewSlug(detail.currentArtifactSlug);
+        setUrlPath(`/${detail.currentArtifactSlug}/`);
+        setPreviewReloadKey((k) => k + 1);
+      } else {
+        setSlug(null);
+        setPreviewSlug(null);
+        setUrlPath(null);
+      }
+    } catch {
+      setError('Failed to load that chat');
+    }
+  };
+
+  const handleRenameSession = async (target: ChatSessionSummaryDto) => {
+    if (!token) return;
+    const next = window.prompt('Rename chat', target.title ?? '');
+    if (!next || !next.trim()) return;
+    try {
+      await renameChatSession(target.id, next.trim(), token);
+      refreshSessions();
+    } catch {
+      setError('Failed to rename that chat');
+    }
+  };
+
+  const handleDeleteSession = async (target: ChatSessionSummaryDto) => {
+    if (!token) return;
+    if (!window.confirm(`Delete "${target.title || 'this chat'}"? This can't be undone.`)) return;
+    try {
+      await deleteChatSession(target.id, token);
+      if (target.id === sessionId) {
+        handleNew();
+      }
+      refreshSessions();
+    } catch {
+      setError('Failed to delete that chat');
+    }
   };
 
   const isReadOnlyPreview = previewSlug !== null && previewSlug !== slug;
@@ -156,8 +217,11 @@ export function ChatPage() {
               ← Viewer
             </Link>
             <div style={{ display: 'flex', gap: '0.4rem' }}>
-              <button type="button" onClick={() => setSkillsPanelOpen((v) => !v)} style={secondaryButtonStyle}>
-                {skillsPanelOpen ? 'Hide skills' : 'Skills'}
+              <button type="button" onClick={() => setPanelMode('chats')} style={secondaryButtonStyle}>
+                Chats
+              </button>
+              <button type="button" onClick={() => setPanelMode('skills')} style={secondaryButtonStyle}>
+                Skills
               </button>
               <button type="button" onClick={handleNew} style={secondaryButtonStyle}>
                 + New
@@ -172,13 +236,26 @@ export function ChatPage() {
           )}
         </header>
 
-        {skillsPanelOpen && (
+        {panelMode === 'skills' && (
           <div style={{ padding: '0.85rem 1rem', borderBottom: `1px solid ${theme.color.border}`, overflowY: 'auto', maxHeight: '40vh' }}>
             <SkillsPanel skills={skills} onChange={refreshSkills} />
           </div>
         )}
 
-        {token && !skillsPanelOpen && (
+        {panelMode === 'chats' && token && (
+          <div style={{ padding: '0.85rem 1rem', borderBottom: `1px solid ${theme.color.border}`, overflowY: 'auto', maxHeight: '40vh' }}>
+            <SessionSidebar
+              sessions={sessions}
+              activeId={sessionId}
+              onSelect={handleLoadSession}
+              onNew={handleNew}
+              onRename={handleRenameSession}
+              onDelete={handleDeleteSession}
+            />
+          </div>
+        )}
+
+        {panelMode === 'pages' && token && (
           <div style={{ padding: '0.85rem 1rem', borderBottom: `1px solid ${theme.color.border}`, overflowY: 'auto', maxHeight: '35vh' }}>
             <ExistingArtifactsPanel artifacts={artifacts} activeSlug={slug} onRead={handleRead} onEdit={handleEdit} />
           </div>
@@ -210,7 +287,7 @@ export function ChatPage() {
         )}
 
         {error && <p style={{ color: theme.color.danger, padding: '0 1rem', fontSize: '0.85rem' }}>{error}</p>}
-        <ChatComposer disabled={pending} onSend={handleSend} />
+        <ChatComposer disabled={pending || !token} onSend={handleSend} />
 
         <div style={{ borderTop: `1px solid ${theme.color.border}`, padding: '0.85rem 1rem' }}>
           <AuthWidget role={role} popupPlacement="above" />
@@ -248,7 +325,7 @@ export function ChatPage() {
         )}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {!token && (
-            <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>Log in to preview artifacts or ask database questions.</p>
+            <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>Log in to chat, preview artifacts, or ask database questions.</p>
           )}
           {token && !urlPath && (
             <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>

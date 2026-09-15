@@ -1,0 +1,49 @@
+// apps/artifacts-viewer's own database — chat session history only. Fully
+// independent of services/tool-service/prisma/schema.prisma (the ERP
+// database): different env var (VIEWER_DATABASE_URL, not DATABASE_URL),
+// different migrations folder, different generated client (see the
+// `output` override below). artifacts-viewer is the only service that
+// ever holds this credential; the two databases are never joined or
+// queried together in application code.
+
+generator client {
+  provider = "prisma-client-js"
+  // Both this schema and services/tool-service/prisma/schema.prisma
+  // generate a client named `@prisma/client`. In this npm-workspaces
+  // monorepo that package is hoisted to the single root node_modules/,
+  // so the default output location would have whichever schema generated
+  // last silently overwrite the other's client. A local, non-default
+  // output path keeps this client fully separate — imported via a
+  // relative path (see src/lib/db/prisma.ts) instead of `@prisma/client`.
+  output = "../src/generated/prisma-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("VIEWER_DATABASE_URL")
+}
+
+model ChatSession {
+  id        String        @id @default(uuid())
+  userId    String // the tool-service JWT's `sub` — not a local FK, since
+  // users live in tool-service's database, not this one
+  title     String? // derived from the first user message; editable
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id           String      @id @default(uuid())
+  sessionId    String
+  session      ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role         String // "user" | "assistant"
+  content      String      @db.Text
+  route        String? // "artifact" | "db" | null — the router's decision for this turn
+  artifactSlug String? // set only when route === "artifact" and an artifact resulted
+  createdAt    DateTime    @default(now())
+
+  @@index([sessionId, createdAt])
+}

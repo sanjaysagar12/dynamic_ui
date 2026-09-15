@@ -7,6 +7,8 @@ export default [
   ...nx.configs['flat/react-typescript'],
   ...baseConfig,
   {
-    ignores: ['.next/**/*', '**/out-tsc'],
+    // src/generated/prisma-client is vendored/generated code (custom Prisma
+    // client output — see prisma/schema.prisma), not hand-written source.
+    ignores: ['.next/**/*', '**/out-tsc', 'src/generated/**'],
   },
 ];

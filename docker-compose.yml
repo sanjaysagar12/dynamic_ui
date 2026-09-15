@@ -57,6 +57,31 @@ services:
     # resources; comment out this whole service block (and tool-service's
     # `depends_on: postgres` below) if you want to skip starting it too.
 
+  # artifacts-viewer's own database — chat session history only.
+  # Deliberately a SEPARATE Postgres instance/credential from `postgres`
+  # above (tool-service's ERP database), not a second schema on it — see
+  # apps/artifacts-viewer/prisma/schema.prisma's top-of-file note.
+  # artifacts-viewer is the only service given VIEWER_DATABASE_URL below.
+  viewer-postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${VIEWER_POSTGRES_USER:-artifacts_viewer}
+      POSTGRES_PASSWORD: ${VIEWER_POSTGRES_PASSWORD:?set VIEWER_POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${VIEWER_POSTGRES_DB:-artifacts_viewer}
+    volumes:
+      - viewer_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${VIEWER_POSTGRES_USER:-artifacts_viewer} -d ${VIEWER_POSTGRES_DB:-artifacts_viewer}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # No published port (see top-of-file note) — same external-Postgres
+    # swap-out story as `postgres` above: set VIEWER_DATABASE_URL directly
+    # in `.env` to point at an external instance instead, and this service
+    # becomes unused (harmless to leave running, or comment it out along
+    # with artifacts-viewer's `depends_on: viewer-postgres` below).
+
   tool-service:
     build:
       context: .
@@ -167,6 +192,12 @@ services:
       ARTIFACT_AGENT_SERVICE_URL: http://artifact-agent-service:5102
       DB_AGENT_SERVICE_URL: http://db-agent-service:5103
       TOOL_SERVICE_URL: http://tool-service:5104
+      # This service's own database (chat session history) — see
+      # viewer-postgres above. Falls back to that bundled container only
+      # when VIEWER_DATABASE_URL isn't already set in `.env` (external
+      # Postgres option — see .env.example). No other service is given
+      # this var: artifacts-viewer is the only holder of this credential.
+      VIEWER_DATABASE_URL: ${VIEWER_DATABASE_URL:-postgresql://${VIEWER_POSTGRES_USER:-artifacts_viewer}:${VIEWER_POSTGRES_PASSWORD}@viewer-postgres:5432/${VIEWER_POSTGRES_DB:-artifacts_viewer}}
     ports:
       # The ONLY published port in this file — see top-of-file note.
       - '4200:4200'
@@ -179,9 +210,12 @@ services:
         condition: service_healthy
       tool-service:
         condition: service_healthy
+      viewer-postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
+  viewer_postgres_data:
   artifacts_data:
     # Shared by artifacts-server and artifact-agent-service — see the
     # load-bearing-detail note at the top of this file. Do not split into

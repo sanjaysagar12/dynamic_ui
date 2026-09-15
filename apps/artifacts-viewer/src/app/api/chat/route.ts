@@ -1,52 +1,91 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ROLES } from '@org/shared-types';
 import { AgentServiceError, chatWithAgent } from '../../../lib/api/artifact-agent-service-client';
 import { chatWithDbAgent, DbAgentServiceError } from '../../../lib/api/db-agent-service-client';
 import { extractAccessToken } from '../../../lib/http/data-request-auth';
 import { routeToAgent } from '../../../lib/unified-chat/agent-router';
-import type { UnifiedChatRequestPayload, UnifiedChatResponsePayload } from '../../../lib/unified-chat/types';
+import { resolveUserId } from '../../../lib/chat-sessions/auth';
+import {
+  appendMessage,
+  createSession,
+  getCurrentArtifactSlug,
+  getMessageHistory,
+  getSessionById,
+} from '../../../lib/chat-sessions/store';
+import type { ChatTurnRequestPayload, ChatTurnResponsePayload } from '../../../lib/chat-sessions/types';
 import type { ChatRequestPayload } from '../../../lib/chat/types';
 
-export async function POST(req: NextRequest): Promise<NextResponse<UnifiedChatResponsePayload | { error: string }>> {
-  const payload = (await req.json()) as UnifiedChatRequestPayload;
-
-  // Get the last user message to determine which agent to use
-  const lastUserMessage = [...payload.messages].reverse().find((msg) => msg.role === 'user');
-  if (!lastUserMessage) {
-    return NextResponse.json({ error: 'No user message found' }, { status: 400 });
+export async function POST(req: NextRequest): Promise<NextResponse<ChatTurnResponsePayload | { error: string }>> {
+  const payload = (await req.json().catch(() => null)) as ChatTurnRequestPayload | null;
+  if (!payload || typeof payload.message !== 'string' || !payload.message.trim()) {
+    return NextResponse.json({ error: 'message is required' }, { status: 400 });
   }
 
-  const agent = await routeToAgent(lastUserMessage.content);
+  // Chat sessions belong to a user (ChatSession.userId is not nullable — see
+  // prisma/schema.prisma), so — unlike the previous stateless endpoint — every turn now needs a
+  // verified caller, not just database-routed ones.
+  const accessToken = extractAccessToken(req);
+  if (!accessToken) {
+    return NextResponse.json({ error: 'Authorization: Bearer <access token> header is required' }, { status: 401 });
+  }
+  const userId = await resolveUserId(accessToken);
+  if (!userId) {
+    return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
+  }
+
+  let session;
+  if (payload.sessionId) {
+    session = await getSessionById(payload.sessionId);
+    if (!session) {
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    }
+    if (session.userId !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  } else {
+    session = await createSession(userId, payload.message);
+  }
+
+  const priorHistory = await getMessageHistory(session.id);
+  // Persisted before either backend agent is called — a request that fails partway through
+  // (network error, agent timeout, …) still leaves the user's own message recorded.
+  await appendMessage(session.id, 'user', payload.message);
+  const history = [...priorHistory, { role: 'user' as const, content: payload.message }];
+
+  const route = await routeToAgent(payload.message);
 
   try {
-    if (agent === 'artifact') {
-      // Route to artifact agent
+    if (route === 'artifact') {
+      const currentSlug = await getCurrentArtifactSlug(session.id);
       const artifactPayload: ChatRequestPayload = {
-        messages: payload.messages,
-        slug: payload.slug || null,
-        roles: payload.roles || [],
+        messages: history,
+        slug: currentSlug,
+        roles: ROLES.slice(),
       };
-
       const result = await chatWithAgent(artifactPayload);
-      const response: UnifiedChatResponsePayload = {
-        type: 'artifact',
-        ...result,
+
+      await appendMessage(session.id, 'assistant', result.reply, { route: 'artifact', artifactSlug: result.slug });
+
+      const response: ChatTurnResponsePayload = {
+        sessionId: session.id,
+        reply: result.reply,
+        route: 'artifact',
+        artifactSlug: result.slug,
+        artifact: { slug: result.slug, title: result.title, urlPath: result.url_path, previewUrl: result.preview_url },
       };
       return NextResponse.json(response);
     } else {
-      // Route to DB agent
-      const accessToken = extractAccessToken(req);
-      if (!accessToken) {
-        return NextResponse.json(
-          { error: 'Authorization: Bearer <access token> header is required for database operations' },
-          { status: 401 },
-        );
-      }
+      const result = await chatWithDbAgent(history, accessToken);
+      const lastAssistant = [...result.messages].reverse().find((msg) => msg.role === 'assistant');
+      const replyText = lastAssistant?.content ?? (result.type === 'text' ? result.text : '');
 
-      const result = await chatWithDbAgent(payload.messages, accessToken);
-      const response: UnifiedChatResponsePayload = {
-        type: 'db',
-        response: result,
-        agentType: 'db',
+      await appendMessage(session.id, 'assistant', replyText, { route: 'db' });
+
+      const response: ChatTurnResponsePayload = {
+        sessionId: session.id,
+        reply: replyText,
+        route: 'db',
+        db: result,
       };
       return NextResponse.json(response);
     }

@@ -1,0 +1,33 @@
+# Override for services/artifact-agent-service/Dockerfile only (BuildKit
+# uses this file INSTEAD of the root .dockerignore when it's present, so it
+# has to repeat the same baseline exclusions).
+#
+# The one difference from the root file: this service's image stages
+# AGENTS.md and .opencode/ from artifacts-server's artifacts/ directory as
+# seed content for the shared volume (see docker-entrypoint.sh) — so those
+# two paths must NOT be excluded here, even though the rest of artifacts/
+# (real, runtime-generated artifact content) still is.
+
+**/node_modules
+**/dist
+**/out-tsc
+**/.next
+**/coverage
+**/tmp
+**/*.log
+
+.git
+.nx
+
+**/.env
+**/.env.local
+**/.env.*.local
+
+# See root .dockerignore's note — a stray committed pnpm-lock.yaml confuses
+# Nx's project-graph plugin in this npm-workspaces repo.
+pnpm-lock.yaml
+
+services/artifacts-server/artifacts/**
+!services/artifacts-server/artifacts/AGENTS.md
+!services/artifacts-server/artifacts/.opencode
+!services/artifacts-server/artifacts/.opencode/**

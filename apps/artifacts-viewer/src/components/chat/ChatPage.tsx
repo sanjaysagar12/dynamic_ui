@@ -49,7 +49,7 @@ export function ChatPage() {
   const [previewReloadKey, setPreviewReloadKey] = useState(0);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
-  const [panelMode, setPanelMode] = useState<PanelMode>('pages');
+  const [panelMode, setPanelMode] = useState<PanelMode>('chats');
   const [pendingRich, setPendingRich] = useState<PendingRich | null>(null);
 
   const { artifacts, role } = useArtifactCatalog(token);

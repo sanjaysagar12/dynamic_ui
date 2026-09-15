@@ -1,6 +1,6 @@
 // apps/artifacts-viewer's own database — chat session history only. Fully
 // independent of services/tool-service/prisma/schema.prisma (the ERP
-// database): different env var (VIEWER_DATABASE_URL, not DATABASE_URL),
+// database): different env var (SESSION_DATABASE_URL, not DATABASE_URL),
 // different migrations folder, different generated client (see the
 // `output` override below). artifacts-viewer is the only service that
 // ever holds this credential; the two databases are never joined or
@@ -20,7 +20,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("VIEWER_DATABASE_URL")
+  url      = env("SESSION_DATABASE_URL")
 }
 
 model ChatSession {

@@ -38,3 +38,47 @@ jobs:
       # Nx Cloud recommends fixes for failures to help you get CI green faster. Learn more: https://nx.dev/docs/features/ci-features/self-healing-ci
       - run: npx nx fix-ci
         if: always()
+
+  # Builds and pushes every service's Docker image to Docker Hub — only for
+  # commits actually on `main` (not PRs) and only once `main` above has
+  # passed lint/test/build/typecheck/e2e, so a broken build never gets
+  # published. Each service builds from the repo root as its context (see
+  # docker-compose.yml's top-of-file note — every Dockerfile here assumes
+  # that), tagged both `latest` and the commit SHA for traceability/rollback.
+  docker-publish:
+    needs: main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: tool-service
+            dockerfile: services/tool-service/Dockerfile
+          - service: artifacts-server
+            dockerfile: services/artifacts-server/Dockerfile
+          - service: artifact-agent-service
+            dockerfile: services/artifact-agent-service/Dockerfile
+          - service: db-agent-service
+            dockerfile: services/db-agent-service/Dockerfile
+          - service: artifacts-viewer
+            dockerfile: apps/artifacts-viewer/Dockerfile
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/dynamic-ui-${{ matrix.service }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/dynamic-ui-${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}

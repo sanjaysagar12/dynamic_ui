@@ -1,0 +1,34 @@
+# Default ignore file for every Docker build in this repo (build context is
+# always the repo root — see docker-compose.yml). Per-Dockerfile overrides
+# live next to their Dockerfile as `Dockerfile.dockerignore` (BuildKit uses
+# that file INSTEAD of this one when present, not merged with it) — currently
+# only services/artifact-agent-service needs one, to let through the two
+# artifacts/ seed files it bakes into its image.
+
+**/node_modules
+**/dist
+**/out-tsc
+**/.next
+**/coverage
+**/tmp
+**/*.log
+
+.git
+.nx
+
+**/.env
+**/.env.local
+**/.env.*.local
+
+# A stray, committed pnpm-lock.yaml sits alongside the real package-lock.json
+# at the repo root (this is an npm-workspaces project) — Nx's project-graph
+# plugin sees it and refuses to run ("pnpm lockfile detected, but
+# node_modules was not installed with pnpm"). Excluded from every build
+# context here rather than deleted from the repo — flagged as a finding in
+# the containerization report instead of silently fixed, since removing a
+# committed file is outside this pass's scope.
+pnpm-lock.yaml
+
+# Runtime-managed artifact content — never a build input for any image; the
+# shared artifacts_data volume is the only place it should live at runtime.
+services/artifacts-server/artifacts

@@ -1,0 +1,181 @@
+# docker-compose.yml
+#
+# LOAD-BEARING DETAIL — do not "simplify" this away:
+# artifact-agent-service drives opencode as a subprocess that writes
+# directly into ARTIFACTS_ROOT on disk; artifacts-server serves static files
+# from that SAME directory (see ARCHITECTURE.md §4, "opencode... operates
+# straight against services/artifacts-server/artifacts/<slug>/, the same
+# directory artifacts-server serves from"). The single `artifacts_data`
+# named volume below, mounted at the identical /app/artifacts path in both
+# services, is what makes that true in this deployment. Splitting it into
+# two separate volumes would silently break artifact generation — opencode
+# would write artifacts that artifacts-server can never see or serve.
+#
+# SECURITY PROPERTY, not an oversight: artifacts-viewer is the only service
+# with a published host port. Every other service is reachable only by
+# other containers on this compose network, by service name — matching
+# ARCHITECTURE.md's summary table ("Backend services shouldn't need public
+# exposure"). Do not add a `ports:` mapping to any service below except
+# artifacts-viewer.
+#
+# Env vars: every service reads the same root `.env` file (copy
+# `.env.example` to `.env` first) via `env_file: .env` — simplest option for
+# this project's size, per the single package.json/workspace-wide
+# convention this repo already uses elsewhere. Service-to-service URLs are
+# set directly below instead, since they need compose's internal DNS
+# (service names), which can't live in a static file meant to also work
+# outside Docker.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dynamic_ui}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-dynamic_ui}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-dynamic_ui} -d ${POSTGRES_DB:-dynamic_ui}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # No published port (see top-of-file note).
+    #
+    # SWITCHING TO AN EXTERNAL POSTGRES (e.g. Supabase) INSTEAD OF THIS
+    # CONTAINER: nothing in this file needs editing. Just set DATABASE_URL
+    # and DIRECT_URL directly in your root `.env` (see .env.example) to
+    # your Supabase connection strings — tool-service's `environment:`
+    # block below falls back to this local container only when DATABASE_URL/
+    # DIRECT_URL are NOT set in `.env`, via compose's own `${VAR:-default}`
+    # substitution (compose auto-loads this same root `.env` file for that,
+    # separately from the `env_file:` directive that injects it into each
+    # container). Once DATABASE_URL is set in `.env`, this `postgres`
+    # service becomes unused — it still starts (tool-service's `depends_on`
+    # below doesn't know it's unused), which is harmless but wastes
+    # resources; comment out this whole service block (and tool-service's
+    # `depends_on: postgres` below) if you want to skip starting it too.
+
+  tool-service:
+    build:
+      context: .
+      dockerfile: services/tool-service/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Falls back to the bundled `postgres` service above only when
+      # DATABASE_URL/DIRECT_URL aren't already set in `.env` — see that
+      # service's comment for how to point this at Supabase (or any other
+      # external Postgres) instead.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-dynamic_ui}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-dynamic_ui}}
+      DIRECT_URL: ${DIRECT_URL:-postgresql://${POSTGRES_USER:-dynamic_ui}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-dynamic_ui}}
+    depends_on:
+      # Only relevant when using the bundled `postgres` service above; if
+      # you've switched to Supabase and commented that service out, comment
+      # this out too (otherwise compose will still wait on a container that
+      # will never start).
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5104/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    # No published port (see top-of-file note).
+
+  artifacts-server:
+    build:
+      context: .
+      dockerfile: services/artifacts-server/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ARTIFACTS_ROOT: /app/artifacts
+      TOOL_SERVICE_URL: http://tool-service:5104
+    volumes:
+      - artifacts_data:/app/artifacts
+    depends_on:
+      tool-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3400/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # No published port (see top-of-file note).
+
+  artifact-agent-service:
+    build:
+      context: .
+      dockerfile: services/artifact-agent-service/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ARTIFACTS_ROOT: /app/artifacts
+      ARTIFACTS_SERVER_URL: http://artifacts-server:3400
+      TOOL_SERVICE_URL: http://tool-service:5104
+    volumes:
+      - artifacts_data:/app/artifacts
+    depends_on:
+      tool-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5102/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # No published port (see top-of-file note).
+
+  db-agent-service:
+    build:
+      context: .
+      dockerfile: services/db-agent-service/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TOOL_SERVICE_URL: http://tool-service:5104
+    depends_on:
+      tool-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5103/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # No published port (see top-of-file note).
+
+  artifacts-viewer:
+    build:
+      context: .
+      dockerfile: apps/artifacts-viewer/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      ARTIFACTS_SERVER_URL: http://artifacts-server:3400
+      ARTIFACT_AGENT_SERVICE_URL: http://artifact-agent-service:5102
+      DB_AGENT_SERVICE_URL: http://db-agent-service:5103
+      TOOL_SERVICE_URL: http://tool-service:5104
+    ports:
+      # The ONLY published port in this file — see top-of-file note.
+      - '4200:4200'
+    depends_on:
+      artifacts-server:
+        condition: service_healthy
+      artifact-agent-service:
+        condition: service_healthy
+      db-agent-service:
+        condition: service_healthy
+      tool-service:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  artifacts_data:
+    # Shared by artifacts-server and artifact-agent-service — see the
+    # load-bearing-detail note at the top of this file. Do not split into
+    # two volumes.

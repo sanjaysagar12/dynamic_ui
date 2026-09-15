@@ -3,12 +3,6 @@ export interface DbChatMessage {
   content: string;
 }
 
-/** What the browser sends to this app's own `/api/chat-db` BFF route — the session's access token
- *  itself travels as an `Authorization: Bearer` header (see lib/http/data-request-auth.ts), not in this body. */
-export interface DbChatRequestPayload {
-  messages: DbChatMessage[];
-}
-
 // Mirrors db-agent-service's src/schemas.ts (which itself mirrors tool-service's
 // src/tools/types.ts FormFieldSpec/FormSpec/TableColumnSpec/DisplaySpec) by hand — this repo
 // already hand-duplicates its wire types per side rather than sharing them through a package, so

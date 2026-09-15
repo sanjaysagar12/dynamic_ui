@@ -29,7 +29,7 @@ export function ChatComposer({ disabled, onSend }: ChatComposerProps) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         disabled={disabled}
-        placeholder="Describe the page you want…"
+        placeholder="Describe a page you want, or ask about your data…"
         style={{
           flex: 1,
           padding: '0.6rem 0.85rem',

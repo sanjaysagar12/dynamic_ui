@@ -6,9 +6,10 @@ import { ROLES } from '@org/shared-types';
 import { useSession } from '../../lib/session/session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
 import { useArtifactSrc } from '../../hooks/useArtifactSrc';
-import { sendChatMessage, ChatRequestError } from '../../lib/api/artifact-chat-client';
+import { chatWithUnifiedAgent, UnifiedChatError } from '../../lib/api/unified-chat-client';
 import { fetchSkills } from '../../lib/api/skills-client';
 import type { ChatMessage } from '../../lib/chat/types';
+import type { DbChatResponsePayload } from '../../lib/db-chat/types';
 import type { ArtifactCatalogEntry } from '../../lib/artifacts/types';
 import type { Skill } from '../../lib/skills/types';
 import { ArtifactFrame } from '../ArtifactFrame';
@@ -18,7 +19,17 @@ import { ChatComposer } from './ChatComposer';
 import { ExistingArtifactsPanel } from './ExistingArtifactsPanel';
 import { SkillsPanel } from './SkillsPanel';
 import { SkillSelector } from './SkillSelector';
+import { DynamicForm } from '../db-chat/DynamicForm';
+import { DynamicTable } from '../db-chat/DynamicTable';
+import { DynamicChart } from '../db-chat/DynamicChart';
+import { DynamicCard } from '../db-chat/DynamicCard';
 import { theme, secondaryButtonStyle } from '../../lib/ui/theme';
+
+// The last non-text database-agent response, if any — a form to fill in, or a structured result
+// to render below the transcript. Cleared on the next send. Its own framing sentence (`text`, when
+// present) is already part of `messages` (see db-agent-service's wrapDisplay/form_request
+// handling), so this only ever needs to carry the structured part, not re-render the text itself.
+type PendingRich = Extract<DbChatResponsePayload, { type: 'form_request' | 'table' | 'chart' | 'card' }>;
 
 export function ChatPage() {
   const { session } = useSession();
@@ -33,6 +44,7 @@ export function ChatPage() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [skillsPanelOpen, setSkillsPanelOpen] = useState(false);
+  const [pendingRich, setPendingRich] = useState<PendingRich | null>(null);
 
   const { artifacts, role } = useArtifactCatalog(token);
   const artifactSrc = useArtifactSrc(urlPath ?? '', token);
@@ -63,20 +75,39 @@ export function ChatPage() {
     setMessages(nextMessages);
     setPending(true);
     setError(null);
+    setPendingRich(null);
 
     try {
-      const response = await sendChatMessage({
-        messages: nextMessages,
-        slug,
-        roles: ROLES.slice(),
-      });
+      // The session's tool-service access token travels along on every turn
+      // (as an Authorization header) even for what will turn out to be an
+      // artifact request — the router only knows which agent handles a
+      // message after this call reaches the server, and a database question
+      // needs that token to have been sent at all.
+      const result = await chatWithUnifiedAgent(
+        {
+          messages: nextMessages,
+          slug,
+          roles: ROLES.slice(),
+        },
+        token ?? undefined,
+      );
+
+      if (result.type === 'artifact') {
+        setMessages(result.messages);
+        setSlug(result.slug);
+        setUrlPath(result.url_path);
+        setPreviewSlug(result.slug);
+        setPreviewReloadKey((k) => k + 1);
+        return;
+      }
+
+      const response = result.response;
       setMessages(response.messages);
-      setSlug(response.slug);
-      setUrlPath(response.url_path);
-      setPreviewSlug(response.slug);
-      setPreviewReloadKey((k) => k + 1);
+      if (response.type !== 'text') {
+        setPendingRich(response);
+      }
     } catch (err) {
-      setError(err instanceof ChatRequestError ? err.message : 'Failed to reach the agent service');
+      setError(err instanceof UnifiedChatError ? err.message : 'Failed to reach the agent service');
     } finally {
       setPending(false);
     }
@@ -93,6 +124,7 @@ export function ChatPage() {
     setUrlPath(`/${artifact.slug}/`);
     setMessages([{ role: 'assistant', content: `Now editing "${artifact.title}". What would you like to change?` }]);
     setError(null);
+    setPendingRich(null);
   };
 
   const handleNew = () => {
@@ -101,6 +133,7 @@ export function ChatPage() {
     setUrlPath(null);
     setMessages([]);
     setError(null);
+    setPendingRich(null);
   };
 
   const isReadOnlyPreview = previewSlug !== null && previewSlug !== slug;
@@ -121,9 +154,6 @@ export function ChatPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Link href="/" style={{ fontSize: '0.85rem', color: theme.color.textMuted, textDecoration: 'none' }}>
               ← Viewer
-            </Link>
-            <Link href="/db-chat" style={{ fontSize: '0.85rem', color: theme.color.primary, textDecoration: 'none' }}>
-              Database Chat →
             </Link>
             <div style={{ display: 'flex', gap: '0.4rem' }}>
               <button type="button" onClick={() => setSkillsPanelOpen((v) => !v)} style={secondaryButtonStyle}>
@@ -155,6 +185,30 @@ export function ChatPage() {
         )}
 
         <ChatMessageList messages={messages} pending={pending} />
+
+        {pendingRich && (
+          <div style={{ padding: '0 1rem 0.85rem', overflowY: 'auto', maxHeight: '45vh' }}>
+            {pendingRich.type === 'form_request' && token && (
+              <DynamicForm
+                toolName={pendingRich.toolName}
+                form={pendingRich.form}
+                prefill={pendingRich.prefill}
+                messages={messages}
+                token={token}
+                onDone={(nextMessages) => {
+                  setMessages(nextMessages);
+                  setPendingRich(null);
+                }}
+                onMessagesUpdate={setMessages}
+                onCancel={() => setPendingRich(null)}
+              />
+            )}
+            {pendingRich.type === 'table' && <DynamicTable display={pendingRich.display} rows={pendingRich.rows} />}
+            {pendingRich.type === 'chart' && <DynamicChart display={pendingRich.display} rows={pendingRich.rows} />}
+            {pendingRich.type === 'card' && <DynamicCard display={pendingRich.display} data={pendingRich.data} />}
+          </div>
+        )}
+
         {error && <p style={{ color: theme.color.danger, padding: '0 1rem', fontSize: '0.85rem' }}>{error}</p>}
         <ChatComposer disabled={pending} onSend={handleSend} />
 
@@ -194,10 +248,12 @@ export function ChatPage() {
         )}
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {!token && (
-            <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>Log in to preview artifacts.</p>
+            <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>Log in to preview artifacts or ask database questions.</p>
           )}
           {token && !urlPath && (
-            <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>No artifact yet — start chatting to create one.</p>
+            <p style={{ padding: '1.5rem', color: theme.color.textMuted }}>
+              No artifact yet — start chatting to create one, or ask a question about your data.
+            </p>
           )}
           {artifactSrc && (
             <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>

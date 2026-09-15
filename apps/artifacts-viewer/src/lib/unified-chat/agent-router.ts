@@ -5,6 +5,12 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// A classification call this cheap doesn't need a frontier model — Haiku is
+// far less costly per turn and plenty accurate for a two-way "artifact vs
+// db" decision. Configurable (not hardcoded) so this can be tuned without a
+// code change/redeploy; see docker-compose.yml and .env.example.
+const ROUTER_MODEL = process.env.AGENT_ROUTER_MODEL || 'claude-haiku-4-5-20251001';
+
 /**
  * Routes a user message to either the artifact agent or database agent
  * based on LLM analysis of user intent.
@@ -15,7 +21,7 @@ const client = new Anthropic({
 export async function routeToAgent(message: string): Promise<AgentType> {
   try {
     const response = await client.messages.create({
-      model: 'claude-opus-5',
+      model: ROUTER_MODEL,
       max_tokens: 50,
       system: `You are an expert at analyzing user intentions. Given a user message, determine if they want to:
 1. Create, generate, or design visual content (artifacts, UI components, dashboards, charts, forms, HTML, React components, layouts, visualizations) → respond "artifact"

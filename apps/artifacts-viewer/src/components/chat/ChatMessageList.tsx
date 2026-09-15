@@ -13,7 +13,8 @@ export function ChatMessageList({ messages, pending }: ChatMessageListProps) {
     <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
       {messages.length === 0 && !pending && (
         <p style={{ color: theme.color.textMuted, fontSize: '0.9rem' }}>
-          Describe the page you want to create, e.g. &quot;a simple todo list app&quot;.
+          Describe a page you want to create (e.g. &quot;a simple todo list app&quot;), or ask a question about
+          your data (e.g. &quot;how many open jobs are due this week?&quot;).
         </p>
       )}
       {messages.map((message, index) => (

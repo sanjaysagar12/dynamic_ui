@@ -15,7 +15,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<UnifiedChatRe
     return NextResponse.json({ error: 'No user message found' }, { status: 400 });
   }
 
-  const agent = routeToAgent(lastUserMessage.content);
+  const agent = await routeToAgent(lastUserMessage.content);
 
   try {
     if (agent === 'artifact') {

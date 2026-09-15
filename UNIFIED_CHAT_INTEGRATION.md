@@ -14,10 +14,11 @@ This document describes the integration of separate chat-artifact and chat-db en
 
 2. **`apps/artifacts-viewer/src/lib/unified-chat/agent-router.ts`**
    - Core routing logic that determines which agent to use based on user prompt
-   - Keyword-based scoring system:
-     - **Artifact Keywords**: create, generate, design, build, make, write, render, artifact, ui, interface, component, page, html, react, visual, layout, chart, graph, dashboard
-     - **DB Keywords**: query, select, show, list, count, insert, update, delete, manipulate, database, table, data, fetch, retrieve, modify, store, save, remove, add, change, edit
-   - Defaults to DB agent on tie (data manipulation is more common)
+   - Uses Claude Opus-5 LLM for intelligent intent analysis
+   - Analyzes user message to determine:
+     - **Artifact Intent**: Create, generate, or design visual content (UI components, dashboards, charts, HTML, React components, layouts, visualizations)
+     - **Database Intent**: Query, insert, update, delete, or manipulate data (fetch data, select records, modify entries, manage databases)
+   - Defaults to DB agent on API errors (graceful fallback)
 
 3. **`apps/artifacts-viewer/src/app/api/chat/route.ts`**
    - New unified endpoint: `POST /api/chat`
@@ -50,10 +51,12 @@ This document describes the integration of separate chat-artifact and chat-db en
 - "List all customers..." → **db**
 - "Count total orders..." → **db**
 
-### Default Behavior:
-- Mixed intent messages default to **db** (more common use case)
-- Empty/ambiguous messages default to **db**
-- Case-insensitive matching
+### Routing Strategy:
+- Uses Claude Opus-5 LLM for intelligent analysis
+- No hardcoded keywords or scoring system
+- Natural language understanding of user intent
+- Graceful fallback to **db** agent on API errors
+- LLM evaluation is invisible to the user
 
 ## Request/Response Flow
 
@@ -62,14 +65,16 @@ Client Browser
     ↓
 /api/chat (Unified Endpoint)
     ↓
-Agent Router (Analyzes User Prompt)
-    ├→ Artifact Agent → /api/chat-artifact
+Agent Router (LLM Analysis)
+    │ Calls Claude Opus-5 to determine intent
+    │
+    ├→ Artifact Intent → Artifact Agent (/api/chat-artifact)
     │   └→ Returns: ChatResponsePayload
     │
-    └→ DB Agent → /api/chat-db
+    └→ Database Intent → DB Agent (/api/chat-db)
         └→ Returns: DbChatResponsePayload
     ↓
-Unified Response Format
+Unified Response Format (type: 'artifact' | 'db')
     ↓
 Client Browser
 ```
@@ -165,16 +170,18 @@ npm exec nx build artifacts-viewer
 
 - Artifact agent timeout: 950,000ms (for complex multi-screen artifacts)
 - DB agent timeout: 60,000ms (for standard queries)
-- Router decision time: <1ms (keyword-based scoring)
+- Router decision time: ~1-2 seconds (Claude LLM inference)
+- LLM routing is cached by Anthropic where possible
 - All existing optimizations preserved
 
 ## Future Improvements
 
-1. **ML-based Intent Detection**: Replace keyword matching with trained model
-2. **Confidence Scoring**: Return confidence level of routing decision
-3. **User Feedback Loop**: Learn from misrouted requests
-4. **Analytics**: Track which agent gets called and why
-5. **Custom Routing Rules**: Allow configuration per deployment environment
+1. **Confidence Scoring**: Return confidence level from Claude routing decision
+2. **User Feedback Loop**: Learn from misrouted requests and fine-tune prompts
+3. **Analytics**: Track routing decisions, latency, and agent performance
+4. **Cached Intent Analysis**: Cache routing decisions for identical or similar prompts
+5. **Custom Routing Rules**: Allow per-deployment overrides or specialized routing strategies
+6. **Routing Explanation**: Include "reasoning" from Claude to show why a route was chosen
 
 ## Security Considerations
 

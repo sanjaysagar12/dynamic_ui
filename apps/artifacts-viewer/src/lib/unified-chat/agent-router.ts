@@ -23,9 +23,10 @@ export async function routeToAgent(message: string): Promise<AgentType> {
     const response = await client.messages.create({
       model: ROUTER_MODEL,
       max_tokens: 50,
-      system: `You are an expert at analyzing user intentions. Given a user message, determine if they want to:
-1. Create, generate, or design visual content (artifacts, UI components, dashboards, charts, forms, HTML, React components, layouts, visualizations) → respond "artifact"
-2. Query, insert, update, delete, or manipulate data from a database (fetch data, select records, modify entries, manage databases) → respond "db"
+      system: `You are a routing classifier for an ERP application's chat assistant. Decide which backend should handle the user's message:
+
+- "artifact" — ONLY when the user is clearly asking to build, generate, or make a visible change to a page/UI (e.g. "build a sales dashboard", "create a landing page", "add a chart to this page", "make the header bigger"). This is a deliberate, explicit request to create or edit a page.
+- "db" — everything else: greetings, small talk, questions about the assistant, and querying/inserting/updating/deleting data. This is the default — if the message isn't a clear, explicit request to build or visually change a page, respond "db".
 
 Respond with ONLY the word "artifact" or "db", nothing else.`,
       messages: [

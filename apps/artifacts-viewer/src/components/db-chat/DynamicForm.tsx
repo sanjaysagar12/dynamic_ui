@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { DbChatMessage, FormFieldSpec, FormSpec } from '../../lib/db-chat/types';
 import { submitDbChatForm, DbChatRequestError } from '../../lib/api/db-chat-client';
 import type { ToolResult } from '../../lib/api/session-client';
-import { theme, inputStyle, primaryButtonStyle, secondaryButtonStyle } from '../../lib/ui/theme';
 import { isEmptyValue } from './dynamicUtils';
+import { Input, Textarea, Select } from '../ui/input';
+import { Button } from '../ui/button';
+import { cn } from '../../lib/utils/cn';
 
 interface FkOption {
   value: unknown;
@@ -146,13 +148,13 @@ function ForeignKeyInput({
   value,
   onChange,
   token,
-  errorStyle,
+  invalid,
 }: {
   field: FormFieldSpec;
   value: unknown;
   onChange: (value: unknown, label?: string) => void;
   token: string;
-  errorStyle: object;
+  invalid: boolean;
 }) {
   const { options, loading, search } = useForeignKeyOptions(field, token);
   const fk = field.foreignKey!;
@@ -163,15 +165,15 @@ function ForeignKeyInput({
     const datalistId = `fk-${field.name}`;
     return (
       <>
-        <input
+        <Input
           list={datalistId}
           value={typeof value === 'string' ? value : ''}
           placeholder={loading ? 'loading…' : field.required ? 'required' : 'optional'}
+          invalid={invalid}
           onChange={(e) => {
             onChange(e.target.value);
             search(e.target.value);
           }}
-          style={{ ...inputStyle, ...errorStyle }}
         />
         <datalist id={datalistId}>
           {options.map((opt) => (
@@ -185,14 +187,14 @@ function ForeignKeyInput({
   }
 
   return (
-    <select
+    <Select
       value={typeof value === 'string' ? value : ''}
       onChange={(e) => {
         const selected = options.find((opt) => String(opt.value) === e.target.value);
         onChange(e.target.value, selected?.label);
       }}
       disabled={loading}
-      style={{ ...inputStyle, ...errorStyle }}
+      className={invalid ? 'border-negative' : undefined}
     >
       <option value="" disabled>
         {loading ? 'loading…' : field.required ? 'required' : 'optional'}
@@ -202,7 +204,7 @@ function ForeignKeyInput({
           {opt.label}
         </option>
       ))}
-    </select>
+    </Select>
   );
 }
 
@@ -219,26 +221,29 @@ function FieldInput({
   showError: boolean;
   token: string;
 }) {
-  const errorStyle = showError ? { borderColor: theme.color.danger } : {};
-
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-      <span style={{ fontSize: '0.78rem', color: theme.color.textMuted }}>
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[13px] text-secondary">
         {field.label}
-        {field.required && <span style={{ color: theme.color.danger }}> *</span>}
+        {field.required && <span className="text-negative"> *</span>}
       </span>
       {field.widget === 'checkbox' ? (
-        <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} style={{ alignSelf: 'flex-start' }} />
+        <input
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(e) => onChange(e.target.checked)}
+          className="h-4 w-4 self-start accent-[var(--accent-500)]"
+        />
       ) : field.widget === 'textarea' ? (
-        <textarea
+        <Textarea
           value={typeof value === 'string' ? value : ''}
           placeholder={field.required ? 'required' : 'optional'}
           onChange={(e) => onChange(e.target.value)}
           rows={3}
-          style={{ ...inputStyle, ...errorStyle, resize: 'vertical', fontFamily: 'inherit' }}
+          invalid={showError}
         />
       ) : field.widget === 'select' ? (
-        <select value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} style={{ ...inputStyle, ...errorStyle }}>
+        <Select value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} className={showError ? 'border-negative' : undefined}>
           <option value="" disabled>
             {field.required ? 'required' : 'optional'}
           </option>
@@ -247,20 +252,20 @@ function FieldInput({
               {opt.label}
             </option>
           ))}
-        </select>
+        </Select>
       ) : field.widget === 'foreign_key' && field.foreignKey ? (
-        <ForeignKeyInput field={field} value={value} onChange={onChange} token={token} errorStyle={errorStyle} />
+        <ForeignKeyInput field={field} value={value} onChange={onChange} token={token} invalid={showError} />
       ) : (
-        <input
+        <Input
           type={field.widget === 'number' ? 'number' : field.widget === 'date' ? 'date' : field.name === 'password' ? 'password' : 'text'}
           value={typeof value === 'string' || typeof value === 'number' ? value : ''}
           placeholder={field.required ? 'required' : 'optional'}
           onChange={(e) => onChange(field.widget === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)}
-          style={{ ...inputStyle, ...errorStyle }}
+          invalid={showError}
         />
       )}
-      {field.helpText && <span style={{ fontSize: '0.72rem', color: theme.color.textMuted }}>{field.helpText}</span>}
-      {showError && <span style={{ color: theme.color.danger, fontSize: '0.75rem' }}>Required — the agent won&apos;t invent one.</span>}
+      {field.helpText && <span className="text-[12px] text-tertiary">{field.helpText}</span>}
+      {showError && <span className="text-negative text-[12px]">Required — the agent won&apos;t invent one.</span>}
     </label>
   );
 }
@@ -289,28 +294,18 @@ function LineItemsInput({
   const addRow = () => onChange([...rows, initialRow(itemFields)]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-      <span style={{ fontSize: '0.78rem', color: theme.color.textMuted }}>
+    <div className="flex flex-col gap-2">
+      <span className="text-[13px] text-secondary">
         {field.label}
-        {field.required && <span style={{ color: theme.color.danger }}> *</span>}
+        {field.required && <span className="text-negative"> *</span>}
       </span>
       {rows.map((row, i) => (
-        <div
-          key={i}
-          style={{
-            border: `1px solid ${theme.color.border}`,
-            borderRadius: theme.radiusSm,
-            padding: '0.6rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: theme.color.textMuted }}>Row {i + 1}</span>
-            <button type="button" onClick={() => removeRow(i)} style={{ ...secondaryButtonStyle, padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}>
+        <div key={i} className="border border-subtle rounded-md p-3 flex flex-col gap-2.5 bg-surface-raised">
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] font-semibold text-tertiary">Row {i + 1}</span>
+            <Button type="button" variant="outlined" size="compact" onClick={() => removeRow(i)} className="h-7 px-2.5 text-[12px]">
               Remove
-            </button>
+            </Button>
           </div>
           {itemFields.map((itemField) => (
             <FieldInput
@@ -324,12 +319,10 @@ function LineItemsInput({
           ))}
         </div>
       ))}
-      <button type="button" onClick={addRow} style={{ ...secondaryButtonStyle, alignSelf: 'flex-start' }}>
+      <Button type="button" variant="outlined" size="compact" onClick={addRow} className="self-start">
         + Add row
-      </button>
-      {touched && field.required && rows.length === 0 && (
-        <span style={{ color: theme.color.danger, fontSize: '0.75rem' }}>At least one row is required.</span>
-      )}
+      </Button>
+      {touched && field.required && rows.length === 0 && <span className="text-negative text-[12px]">At least one row is required.</span>}
     </div>
   );
 }
@@ -391,40 +384,20 @@ export function DynamicForm({ toolName, form, prefill, messages, token, onDone, 
   };
 
   return (
-    <div
-      style={{
-        background: theme.color.surface,
-        border: `1px solid ${theme.color.border}`,
-        borderLeft: `3px solid ${theme.color.primary}`,
-        borderRadius: theme.radius,
-        boxShadow: theme.shadow,
-        padding: '0.9rem 1rem',
-        fontSize: '0.88rem',
-      }}
-    >
-      <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>{form.title}</div>
+    <div className="bg-surface border border-subtle rounded-lg p-4 text-[13px]" style={{ borderLeft: '3px solid var(--accent-500)' }}>
+      <div className="text-h2 text-primary mb-3">{form.title}</div>
 
       {form.confirmationCopy && (
-        <div
-          style={{
-            background: '#fff8e6',
-            border: '1px solid #f2d478',
-            borderRadius: theme.radiusSm,
-            padding: '0.5rem 0.65rem',
-            fontSize: '0.8rem',
-            marginBottom: '0.7rem',
-            color: '#7a5c00',
-          }}
-        >
+        <div className="bg-warning-soft border border-subtle rounded-md px-3 py-2 text-[13px] text-warning mb-3">
           {form.confirmationCopy}
         </div>
       )}
 
-      {error && <p style={{ color: theme.color.danger, fontSize: '0.82rem', marginBottom: '0.6rem' }}>{error}</p>}
+      {error && <p className="text-negative text-[13px] mb-3">{error}</p>}
 
       {step === 'edit' ? (
         <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          <div className="flex flex-col gap-3">
             {form.fields
               .filter((field) => isVisible(field, values))
               .map((field) =>
@@ -450,30 +423,28 @@ export function DynamicForm({ toolName, form, prefill, messages, token, onDone, 
               )}
           </div>
           {touched && missingRequired.length > 0 && (
-            <p style={{ color: theme.color.danger, fontSize: '0.8rem', marginTop: '0.6rem' }}>
-              Required: {missingRequired.join(', ')} — the agent won&apos;t invent a value.
-            </p>
+            <p className="text-negative text-[12px] mt-2.5">Required: {missingRequired.join(', ')} — the agent won&apos;t invent a value.</p>
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.9rem' }}>
-            <button type="button" onClick={onCancel} style={secondaryButtonStyle}>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button type="button" variant="outlined" size="compact" onClick={onCancel}>
               Cancel
-            </button>
-            <button type="button" onClick={handleReview} style={primaryButtonStyle}>
+            </Button>
+            <Button type="button" size="compact" onClick={handleReview}>
               Review
-            </button>
+            </Button>
           </div>
         </>
       ) : (
         <>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          <div className="flex flex-col gap-2">
             {form.fields
               .filter((field) => isVisible(field, values))
               .map((field) =>
                 field.widget === 'line_items' ? (
                   <div key={field.name}>
-                    <div style={{ color: theme.color.textMuted, marginBottom: '0.2rem' }}>{field.label}</div>
+                    <div className="text-tertiary text-[12px] mb-1">{field.label}</div>
                     {(Array.isArray(values[field.name]) ? (values[field.name] as Record<string, unknown>[]) : []).map((row, i) => (
-                      <div key={i} style={{ paddingLeft: '0.75rem', fontSize: '0.82rem', marginBottom: '0.2rem' }}>
+                      <div key={i} className="pl-3 text-[13px] mb-1 text-secondary">
                         {(field.itemFields ?? [])
                           .map(
                             (itemField) =>
@@ -484,24 +455,23 @@ export function DynamicForm({ toolName, form, prefill, messages, token, onDone, 
                     ))}
                   </div>
                 ) : (
-                  <div key={field.name} style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
-                    <span style={{ color: theme.color.textMuted }}>{field.label}</span>
-                    <span style={{ fontWeight: 500 }}>{formatReviewValue(field, values[field.name], labels[field.name])}</span>
+                  <div key={field.name} className={cn('flex justify-between gap-4')}>
+                    <span className="text-tertiary">{field.label}</span>
+                    <span className="font-medium text-primary">{formatReviewValue(field, values[field.name], labels[field.name])}</span>
                   </div>
                 ),
               )}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.9rem' }}>
-            <button type="button" onClick={() => setStep('edit')} disabled={submitting} style={secondaryButtonStyle}>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button type="button" variant="outlined" size="compact" onClick={() => setStep('edit')} disabled={submitting}>
               Edit
-            </button>
-            <button type="button" onClick={handleConfirm} disabled={submitting} style={primaryButtonStyle}>
-              {submitting ? 'Saving…' : form.submitLabel ?? 'Submit'}
-            </button>
+            </Button>
+            <Button type="button" size="compact" loading={submitting} onClick={handleConfirm}>
+              {form.submitLabel ?? 'Submit'}
+            </Button>
           </div>
         </>
       )}
     </div>
   );
 }
-

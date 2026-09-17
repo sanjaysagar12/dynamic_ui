@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchArtifactCatalog, CatalogRequestError } from '../lib/api/catalog-client';
 import type { ArtifactCatalogEntry } from '../lib/artifacts/types';
 
@@ -16,43 +16,20 @@ export interface UseArtifactCatalogResult {
 
 /** Fetches the artifacts visible to the current session, refetching whenever the access token changes. */
 export function useArtifactCatalog(accessToken: string | null): UseArtifactCatalogResult {
-  const [artifacts, setArtifacts] = useState<ArtifactCatalogEntry[]>([]);
-  const [role, setRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadNonce, setReloadNonce] = useState(0);
+  const queryClient = useQueryClient();
+  const queryKey = ['artifact-catalog', accessToken];
 
-  useEffect(() => {
-    if (!accessToken) {
-      setArtifacts([]);
-      setRole(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
+  const query = useQuery({
+    queryKey,
+    queryFn: () => fetchArtifactCatalog(accessToken as string),
+    enabled: !!accessToken,
+  });
 
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-
-    fetchArtifactCatalog(accessToken, controller.signal)
-      .then((result) => {
-        setArtifacts(result.artifacts);
-        setRole(result.role);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (controller.signal.aborted) return;
-        setError(err instanceof CatalogRequestError ? err.message : 'Failed to load artifacts');
-        setArtifacts([]);
-        setRole(null);
-        setLoading(false);
-      });
-
-    return () => controller.abort();
-  }, [accessToken, reloadNonce]);
-
-  const refetch = useCallback(() => setReloadNonce((n) => n + 1), []);
-
-  return { artifacts, role, loading, error, refetch };
+  return {
+    artifacts: query.data?.artifacts ?? [],
+    role: query.data?.role ?? null,
+    loading: query.isLoading && !!accessToken,
+    error: query.error ? (query.error instanceof CatalogRequestError ? query.error.message : 'Failed to load artifacts') : null,
+    refetch: () => queryClient.invalidateQueries({ queryKey }),
+  };
 }

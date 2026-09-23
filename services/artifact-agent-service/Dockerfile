@@ -41,6 +41,10 @@ COPY --from=build --chown=node:node /workspace/services/artifact-agent-service/d
 # named volume has these two files before the first chat turn runs.
 COPY --from=build --chown=node:node /workspace/services/artifacts-server/artifacts/AGENTS.md ./artifact-seed/AGENTS.md
 COPY --from=build --chown=node:node /workspace/services/artifacts-server/artifacts/.opencode/ ./artifact-seed/.opencode/
+# _shared/ (vendored offline Tailwind build) is also required before the
+# first chat turn — AGENTS.md instructs every generated artifact to link
+# ../_shared/tailwind.min.css, and the CSP blocks any CDN fallback.
+COPY --from=build --chown=node:node /workspace/services/artifacts-server/artifacts/_shared/ ./artifact-seed/_shared/
 
 # `npm install` (not `npm ci`) here: Nx's prune-lockfile output can pin a
 # resolved version that doesn't satisfy this pruned package.json's own

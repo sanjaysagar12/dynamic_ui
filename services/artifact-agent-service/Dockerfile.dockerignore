@@ -3,10 +3,11 @@
 # has to repeat the same baseline exclusions).
 #
 # The one difference from the root file: this service's image stages
-# AGENTS.md and .opencode/ from artifacts-server's artifacts/ directory as
-# seed content for the shared volume (see docker-entrypoint.sh) — so those
-# two paths must NOT be excluded here, even though the rest of artifacts/
-# (real, runtime-generated artifact content) still is.
+# AGENTS.md, .opencode/, and _shared/ from artifacts-server's artifacts/
+# directory as seed content for the shared volume (see
+# docker-entrypoint.sh) — so those paths must NOT be excluded here, even
+# though the rest of artifacts/ (real, runtime-generated artifact content)
+# still is.
 
 **/node_modules
 **/dist
@@ -31,3 +32,5 @@ services/artifacts-server/artifacts/**
 !services/artifacts-server/artifacts/AGENTS.md
 !services/artifacts-server/artifacts/.opencode
 !services/artifacts-server/artifacts/.opencode/**
+!services/artifacts-server/artifacts/_shared
+!services/artifacts-server/artifacts/_shared/**

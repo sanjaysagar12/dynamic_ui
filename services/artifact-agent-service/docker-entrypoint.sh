@@ -41,15 +41,23 @@ if [ -z "$ARTIFACTS_ROOT" ]; then
   exit 1
 fi
 
-# Seed the shared artifacts volume with AGENTS.md / .opencode/ on first boot
-# only — a fresh named volume starts empty, and these must exist before the
-# first chat turn. Baked into this image at build time (see Dockerfile),
-# copied into the volume here rather than requiring a separate manual step.
+# Seed the shared artifacts volume with AGENTS.md / .opencode/ / _shared/ on
+# first boot only — a fresh named volume starts empty, and these must exist
+# before the first chat turn. Baked into this image at build time (see
+# Dockerfile), copied into the volume here rather than requiring a separate
+# manual step. _shared/ holds the vendored offline Tailwind build every
+# generated artifact links (see AGENTS.md) — without it artifacts render
+# unstyled, since the CSP blocks any CDN fallback.
 if [ ! -f "$ARTIFACTS_ROOT/AGENTS.md" ]; then
   echo "Seeding artifacts volume with AGENTS.md and .opencode/ (first boot)..."
   mkdir -p "$ARTIFACTS_ROOT"
   cp /app/artifact-seed/AGENTS.md "$ARTIFACTS_ROOT/AGENTS.md"
   cp -r /app/artifact-seed/.opencode "$ARTIFACTS_ROOT/.opencode"
+fi
+if [ ! -d "$ARTIFACTS_ROOT/_shared" ]; then
+  echo "Seeding artifacts volume with _shared/ (first boot)..."
+  mkdir -p "$ARTIFACTS_ROOT"
+  cp -r /app/artifact-seed/_shared "$ARTIFACTS_ROOT/_shared"
 fi
 
 # exec replaces this shell process with the real one, so Docker's SIGTERM

@@ -77,8 +77,16 @@ export type ChatDbResponse =
   // `postWriteFollowUp` is set only when this text came from a post-write hook's follow-up
   // narration (services/post-write-hooks.ts) — the signal apps/artifacts-viewer's submit-form
   // route uses to decide whether this reply is new information worth persisting to the chat
-  // session, as opposed to a plain "✓ ..." line no hook produced.
-  | { type: 'text'; text: string; messages: ChatMessage[]; postWriteFollowUp?: boolean }
+  // session, as opposed to a plain "✓ ..." line no hook produced. `offers` (same hook mechanism)
+  // is a suggested next form, pre-filled — never auto-submitted, the user opens and submits it
+  // themselves like any other form.
+  | {
+      type: 'text';
+      text: string;
+      messages: ChatMessage[];
+      postWriteFollowUp?: boolean;
+      offers?: { label: string; toolName: string; form: FormSpec; prefill: Record<string, unknown> }[];
+    }
   | { type: 'form_request'; toolName: string; form: FormSpec; prefill?: Record<string, unknown>; text?: string; messages: ChatMessage[] }
   | { type: 'table'; toolName: string; display: Extract<DisplaySpec, { type: 'table' }>; rows: unknown[]; text?: string; messages: ChatMessage[] }
   | { type: 'chart'; toolName: string; display: Extract<DisplaySpec, { type: 'chart' }>; rows: unknown[]; text?: string; messages: ChatMessage[] }

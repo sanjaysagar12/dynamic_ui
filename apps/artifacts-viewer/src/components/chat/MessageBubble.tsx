@@ -6,17 +6,24 @@ import { Sparkles } from 'lucide-react';
 import { cn } from '../../lib/utils/cn';
 import { CopyButton } from './CopyButton';
 import { ArtifactReferenceChip } from './ArtifactReferenceChip';
+import type { PostWriteOfferPayload } from '../../lib/db-chat/types';
 
 export interface DisplayMessage {
   role: 'user' | 'assistant';
   content: string;
   artifactSlug?: string | null;
+  // A post-write hook's suggested next form(s) — see db-chat/types.ts. Only ever set on the
+  // assistant message a form submission just produced.
+  offers?: PostWriteOfferPayload[];
 }
 
 export interface MessageBubbleProps {
   message: DisplayMessage;
   artifactTitle?: string;
   onOpenArtifact?: (slug: string) => void;
+  // Called when the user clicks one of this message's offer chips — the caller opens that offer's
+  // form (same mechanism as any other form_request), never submits it itself.
+  onSelectOffer?: (offer: PostWriteOfferPayload) => void;
   /** 'light' = the full-page assistant's white card (new-prompt.md §4.2); 'dark' = the
    *  floating per-page assistant panel, a deliberately-dark surface (§5.6). Only the
    *  assistant bubble's fill changes — the user bubble stays accent-blue/gradient either way. */
@@ -64,7 +71,7 @@ const markdownComponents = {
   td: ({ children }: { children?: React.ReactNode }) => <td className="px-3 py-2 border-b border-subtle">{children}</td>,
 };
 
-export function MessageBubble({ message, artifactTitle, onOpenArtifact, surface = 'light' }: MessageBubbleProps) {
+export function MessageBubble({ message, artifactTitle, onOpenArtifact, onSelectOffer, surface = 'light' }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const isDark = surface === 'dark';
 
@@ -97,6 +104,25 @@ export function MessageBubble({ message, artifactTitle, onOpenArtifact, surface 
             title={artifactTitle ?? message.artifactSlug}
             onClick={() => onOpenArtifact?.(message.artifactSlug as string)}
           />
+        )}
+        {message.offers && message.offers.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2.5">
+            {message.offers.map((offer, i) => (
+              <button
+                key={`${offer.toolName}-${i}`}
+                type="button"
+                onClick={() => onSelectOffer?.(offer)}
+                className={cn(
+                  'text-[13px] rounded-full px-3.5 py-1.5 border transition-colors',
+                  isDark
+                    ? 'text-[var(--panel-dark-text-secondary)] border-[var(--panel-dark-border)] hover:text-[var(--panel-dark-text-primary)] hover:bg-white/5'
+                    : 'text-accent-400 border-accent-500/40 hover:bg-accent-500/10',
+                )}
+              >
+                {offer.label}
+              </button>
+            ))}
+          </div>
         )}
       </div>
     </div>

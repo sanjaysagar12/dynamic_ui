@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useSession } from '../../lib/session/session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
 import { chatWithUnifiedAgent, UnifiedChatError } from '../../lib/api/unified-chat-client';
-import type { DbChatResponsePayload } from '../../lib/db-chat/types';
+import type { DbChatResponsePayload, PostWriteOfferPayload } from '../../lib/db-chat/types';
 import type { DisplayMessage } from '../chat/MessageBubble';
 import { Sidebar } from '../sidebar/Sidebar';
 import { TopBar } from './TopBar';
@@ -67,6 +67,18 @@ export function WorkspaceShell() {
     }
   };
 
+  const handleSelectOffer = (offer: PostWriteOfferPayload) => {
+    // Opens the offered form exactly like any form_request the model itself would issue — the
+    // offer only ever proposes it, this is still the user choosing to open and submit it.
+    setPendingRich({
+      type: 'form_request',
+      toolName: offer.toolName,
+      form: offer.form,
+      prefill: offer.prefill,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    });
+  };
+
   const handleSelectArtifact = (slug: string) => {
     // One shared assistant conversation for the whole workspace (new-prompt.md §5) — switching
     // which page is open never resets or forks the conversation, it just changes what the
@@ -124,6 +136,7 @@ export function WorkspaceShell() {
               onSelectedSkillsChange={setSelectedSkills}
               onSend={handleSend}
               onOpenArtifact={handleOpenArtifact}
+              onSelectOffer={handleSelectOffer}
               onFormDone={(next) => {
                 setMessages(next);
                 setPendingRich(null);
@@ -156,6 +169,7 @@ export function WorkspaceShell() {
                 onSelectedSkillsChange={setSelectedSkills}
                 onSend={handleSend}
                 onOpenArtifact={handleOpenArtifact}
+                onSelectOffer={handleSelectOffer}
                 onFormDone={(next) => {
                   setMessages(next);
                   setPendingRich(null);

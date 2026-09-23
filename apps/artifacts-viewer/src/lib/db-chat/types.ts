@@ -53,11 +53,21 @@ export type DisplaySpec =
 // `display`'s type is coupled to each variant's own `type` field (Extract<DisplaySpec, ...>
 // rather than the bare union) so a component keyed on response.type (e.g. `<DynamicTable
 // display={pendingRich.display} .../>`) type-checks without an extra runtime narrowing check.
+// A post-write hook's suggested next form — pre-filled, never auto-submitted. Clicking it opens
+// the same DynamicForm flow as any other form_request; the user still has to review and submit it.
+export interface PostWriteOfferPayload {
+  label: string;
+  toolName: string;
+  form: FormSpec;
+  prefill: Record<string, unknown>;
+}
+
 export type DbChatResponsePayload =
   // `postWriteFollowUp` mirrors db-agent-service's schemas.ts — set only when this text came from
   // a post-write hook's follow-up narration, the signal /api/submit-form uses to decide whether
-  // to persist this reply to the chat session.
-  | { type: 'text'; text: string; messages: DbChatMessage[]; postWriteFollowUp?: boolean }
+  // to persist this reply to the chat session. `offers` is that same hook mechanism's suggested
+  // next forms, if any.
+  | { type: 'text'; text: string; messages: DbChatMessage[]; postWriteFollowUp?: boolean; offers?: PostWriteOfferPayload[] }
   | { type: 'form_request'; toolName: string; form: FormSpec; prefill?: Record<string, unknown>; text?: string; messages: DbChatMessage[] }
   | {
       type: 'table';

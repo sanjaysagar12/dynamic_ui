@@ -1,7 +1,7 @@
 'use client';
 
 import { Sparkles, LayoutDashboard, Database, Users2, Rocket, MonitorSmartphone } from 'lucide-react';
-import type { DbChatResponsePayload } from '../../lib/db-chat/types';
+import type { DbChatResponsePayload, PostWriteOfferPayload } from '../../lib/db-chat/types';
 import { MessageBubble, type DisplayMessage } from '../chat/MessageBubble';
 import { ChatPanel } from './ChatPanel';
 
@@ -33,6 +33,7 @@ export interface AssistantPageProps {
   onSelectedSkillsChange: (names: string[]) => void;
   onSend: (message: string) => void;
   onOpenArtifact: (slug: string) => void;
+  onSelectOffer: (offer: PostWriteOfferPayload) => void;
   onFormDone: (messages: DisplayMessage[]) => void;
   onFormMessagesUpdate: (messages: DisplayMessage[]) => void;
   onFormCancel: () => void;

@@ -4,7 +4,7 @@ import { DbAgentGenerationError, ToolServiceAuthError, ToolServiceError } from '
 import type { ChatDbRequest, ChatDbResponse, ChatMessage, SubmitFormRequest } from '../schemas.js';
 import { TOOL_RESULT_GUIDANCE } from './tool-guidance.js';
 import { BUSINESS_SYSTEM_PROMPT } from './business-prompt.js';
-import { POST_WRITE_HOOKS, type PostWriteHook } from './post-write-hooks.js';
+import { POST_WRITE_HOOKS, type PostWriteHook, type ResolvedPostWriteOffer } from './post-write-hooks.js';
 import type { ToolCatalogEntry, ToolResult, ToolServiceClient } from './tool-service-client.js';
 
 /** Builds the Anthropic-facing input schema for one tool — tool-service's own args schema,
@@ -110,11 +110,11 @@ export class DbChatService {
   }
 
   /** No hook registered for this tool -> unchanged behavior, the plain "✓ ..." line, no extra
-   *  model call. A hook registered -> gather its read-only follow-up results and have one small,
-   *  tool-less model call turn them into a natural reply instead. Any follow-up-side failure
-   *  (a follow-up tool erroring, or one no longer resolving to a read-only entry in a freshly
-   *  fetched catalog) falls back to the plain success line rather than surfacing a broken or
-   *  partially-written response — the underlying write already succeeded either way. */
+   *  model call. A hook registered -> gather its read-only follow-up results (if any), resolve any
+   *  offers, and always spend one small, tool-less model call narrating the write (using them for
+   *  context when there are any) — a hook being registered at all is itself the signal that this
+   *  write deserves a real confirmation, not just the generic title/number line, even when it adds
+   *  nothing more than phrasing a status already sitting in the write's own result. */
   private async afterSuccessfulWrite(entry: ToolCatalogEntry, request: SubmitFormRequest, data: unknown): Promise<ChatDbResponse> {
     const successLine = `✓ ${describeSuccess(entry, data)}`;
     const hook = POST_WRITE_HOOKS[entry.name];
@@ -124,28 +124,94 @@ export class DbChatService {
 
     const catalog = await this.toolService.fetchToolCatalog(request.jwt);
     const catalogByName = new Map(catalog.map((e) => [e.name, e]));
+
+    const followUps = await this.runFollowUpSteps(hook, request, data, catalogByName);
+    if (followUps === null) {
+      // A required (non-optional) step failed or was misconfigured — degrade to the plain success
+      // line rather than narrating from partial/untrustworthy data. The underlying write already
+      // succeeded either way.
+      return this.textResponse(successLine, request.messages);
+    }
+
+    const narrated = await this.narrateFollowUp(hook, entry, data, followUps);
+    const offers = this.resolveOffers(hook, catalogByName, request.args, data, followUps);
+    return this.textResponse(narrated || successLine, request.messages, true, offers);
+  }
+
+  /** Runs every followUpTools step in order. A step marked `optional` is simply omitted (not
+   *  called, or its failure ignored) when it doesn't apply or errors; any other step failing (or
+   *  no longer resolving to a read-only tool in a freshly fetched catalog — guarded at startup by
+   *  validatePostWriteHooks, so this only fires if the catalog changed shape since then) aborts the
+   *  whole hook, returning null. A step whose buildArgs returns multiple arg-sets is called once
+   *  per entry (e.g. one get_purchase_price_history call per material on a multi-line receipt). */
+  private async runFollowUpSteps(
+    hook: PostWriteHook,
+    request: SubmitFormRequest,
+    data: unknown,
+    catalogByName: Map<string, ToolCatalogEntry>,
+  ): Promise<{ tool: string; result: ToolResult }[] | null> {
     const followUps: { tool: string; result: ToolResult }[] = [];
 
     for (const step of hook.followUpTools) {
       const followEntry = catalogByName.get(step.tool);
       if (!followEntry || followEntry.mutates) {
-        // Guarded at startup by validatePostWriteHooks — this only fires if the tool catalog
-        // itself changed shape since then. Degrade to the plain success line rather than acting
-        // on a follow-up tool whose current safety we can no longer vouch for.
-        return this.textResponse(successLine, request.messages);
+        if (step.optional) continue;
+        return null;
       }
-      try {
-        const args = step.buildArgs(request.args, data);
-        const followResult = await this.toolService.executeTool(request.jwt, step.tool, args, undefined);
-        followUps.push({ tool: step.tool, result: followResult });
-      } catch (err) {
-        if (err instanceof ToolServiceAuthError) throw err;
-        return this.textResponse(successLine, request.messages);
+
+      const argsOrList = step.buildArgs(request.args, data);
+      if (argsOrList === undefined) {
+        if (step.optional) continue;
+        return null;
+      }
+
+      for (const args of Array.isArray(argsOrList) ? argsOrList : [argsOrList]) {
+        try {
+          const result = await this.toolService.executeTool(request.jwt, step.tool, args, undefined);
+          followUps.push({ tool: step.tool, result });
+        } catch (err) {
+          if (err instanceof ToolServiceAuthError) throw err;
+          if (!step.optional) return null;
+        }
       }
     }
 
-    const narrated = await this.narrateFollowUp(hook, entry, data, followUps);
-    return this.textResponse(narrated || successLine, request.messages, true);
+    return followUps;
+  }
+
+  /** Resolves each configured offer's prefill (using the write's own args/result and every
+   *  follow-up step's results, grouped by tool name) against the SAME catalog the follow-up steps
+   *  were validated against — so an offer whose target tool this caller's role can't even see (GET
+   *  /tools is role-filtered) is silently dropped, same as it would be if the model tried to call
+   *  it directly, rather than proposing a form the user isn't allowed to submit. */
+  private resolveOffers(
+    hook: PostWriteHook,
+    catalogByName: Map<string, ToolCatalogEntry>,
+    writeArgs: Record<string, unknown>,
+    writeResult: unknown,
+    followUps: { tool: string; result: ToolResult }[],
+  ): ResolvedPostWriteOffer[] {
+    if (!hook.offers?.length) return [];
+
+    const followUpsByTool: Record<string, ToolResult[]> = {};
+    for (const f of followUps) {
+      (followUpsByTool[f.tool] ??= []).push(f.result);
+    }
+
+    const resolved: ResolvedPostWriteOffer[] = [];
+    for (const offer of hook.offers) {
+      const prefill = offer.buildPrefill({ writeArgs, writeResult, followUps: followUpsByTool });
+      if (prefill === undefined) continue;
+
+      const offerEntry = catalogByName.get(offer.tool);
+      // Guarded at startup by validatePostWriteHooks (must be mutates: true with a form) — the
+      // `!offerEntry.mutates` half only fires if the catalog changed shape since then; the missing
+      // `offerEntry` half is the normal, expected case for a role this tool is filtered out for.
+      if (!offerEntry || !offerEntry.mutates || !offerEntry.form) continue;
+
+      resolved.push({ label: offer.label, toolName: offer.tool, form: offerEntry.form, prefill });
+    }
+    return resolved;
   }
 
   /** One small, focused model call: the write's result plus every follow-up tool's result, framed
@@ -178,12 +244,18 @@ export class DbChatService {
       .trim();
   }
 
-  private textResponse(text: string, priorMessages: ChatMessage[], postWriteFollowUp = false): ChatDbResponse {
+  private textResponse(
+    text: string,
+    priorMessages: ChatMessage[],
+    postWriteFollowUp = false,
+    offers: ResolvedPostWriteOffer[] = [],
+  ): ChatDbResponse {
     return {
       type: 'text',
       text,
       messages: [...priorMessages, { role: 'assistant', content: text }],
       ...(postWriteFollowUp ? { postWriteFollowUp: true } : {}),
+      ...(offers.length > 0 ? { offers } : {}),
     };
   }
 

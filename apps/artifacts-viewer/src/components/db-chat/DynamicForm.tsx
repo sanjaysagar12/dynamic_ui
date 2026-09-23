@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { DbChatMessage, FormFieldSpec, FormSpec } from '../../lib/db-chat/types';
+import type { DbChatMessage, FormFieldSpec, FormSpec, PostWriteOfferPayload } from '../../lib/db-chat/types';
 import { submitDbChatForm, DbChatRequestError } from '../../lib/api/db-chat-client';
 import type { ToolResult } from '../../lib/api/session-client';
 import { isEmptyValue } from './dynamicUtils';
@@ -24,7 +24,9 @@ interface DynamicFormProps {
   // post-write hook's follow-up reply can be persisted into it. Undefined for a form shown with
   // no active conversation.
   sessionId?: string;
-  onDone: (messages: DbChatMessage[]) => void;
+  // `offers`, when present, is a post-write hook's suggested next form(s) — never auto-submitted,
+  // just handed up so the caller can render them as clickable chips on the resulting message.
+  onDone: (messages: DbChatMessage[], offers?: PostWriteOfferPayload[]) => void;
   // Called when a submission is rejected by the tool itself (the form stays open) — keeps the
   // transcript in sync without closing the form the way onDone does.
   onMessagesUpdate: (messages: DbChatMessage[]) => void;
@@ -373,7 +375,7 @@ export function DynamicForm({ toolName, form, prefill, messages, token, sessionI
         setStep('edit');
         return;
       }
-      onDone(response.messages);
+      onDone(response.messages, response.type === 'text' ? response.offers : undefined);
     } catch (err) {
       setError(err instanceof DbChatRequestError ? err.message : 'Could not save — try again.');
       setStep('edit');

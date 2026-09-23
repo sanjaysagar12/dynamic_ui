@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Sparkles } from 'lucide-react';
-import type { DbChatMessage, DbChatResponsePayload } from '../../lib/db-chat/types';
+import type { DbChatMessage, DbChatResponsePayload, PostWriteOfferPayload } from '../../lib/db-chat/types';
 import { MessageBubble, type DisplayMessage } from '../chat/MessageBubble';
 import { TypingIndicator } from '../chat/TypingIndicator';
 import { SkillsDialog } from '../chat/SkillsDialog';
@@ -29,6 +29,9 @@ export interface ChatPanelProps {
   onSelectedSkillsChange: (names: string[]) => void;
   onSend: (message: string) => void;
   onOpenArtifact: (slug: string) => void;
+  // Called when the user clicks a post-write hook's offer chip — opens that offer's form the same
+  // way any other form_request would be opened.
+  onSelectOffer: (offer: PostWriteOfferPayload) => void;
   onFormDone: (messages: DisplayMessage[]) => void;
   onFormMessagesUpdate: (messages: DisplayMessage[]) => void;
   onFormCancel: () => void;
@@ -45,8 +48,14 @@ export interface ChatPanelProps {
   leadingContent?: React.ReactNode;
 }
 
-function toDisplayMessages(messages: DbChatMessage[]): DisplayMessage[] {
-  return messages.map((m) => ({ role: m.role, content: m.content, artifactSlug: null }));
+function toDisplayMessages(messages: DbChatMessage[], offers?: PostWriteOfferPayload[]): DisplayMessage[] {
+  return messages.map((m, i) => ({
+    role: m.role,
+    content: m.content,
+    artifactSlug: null,
+    // Offers belong to the reply this submission just produced — the last message in the batch.
+    ...(i === messages.length - 1 && offers && offers.length > 0 ? { offers } : {}),
+  }));
 }
 
 export function ChatPanel({
@@ -61,6 +70,7 @@ export function ChatPanel({
   onSelectedSkillsChange,
   onSend,
   onOpenArtifact,
+  onSelectOffer,
   onFormDone,
   onFormMessagesUpdate,
   onFormCancel,
@@ -91,6 +101,7 @@ export function ChatPanel({
               message={message}
               artifactTitle={message.artifactSlug ? artifactTitles[message.artifactSlug] : undefined}
               onOpenArtifact={onOpenArtifact}
+              onSelectOffer={onSelectOffer}
               surface={surface}
             />
           ))}
@@ -120,7 +131,7 @@ export function ChatPanel({
               messages={messages}
               token={token}
               sessionId={sessionId}
-              onDone={(next) => onFormDone(toDisplayMessages(next))}
+              onDone={(next, offers) => onFormDone(toDisplayMessages(next, offers))}
               onMessagesUpdate={(next) => onFormMessagesUpdate(toDisplayMessages(next))}
               onCancel={onFormCancel}
             />

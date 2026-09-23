@@ -12,7 +12,8 @@ type Args = z.infer<typeof inputSchema>;
 
 const tool: ToolDefinition<Args> = {
   name: 'deactivate_material',
-  description: 'Deactivate a material master row (never a real delete) — requires zero stock on hand.',
+  description:
+    "Stop using a material. It is never deleted, just hidden from new use, and history stays. Only possible when its stock is zero; if there is stock, say so and explain it must be used, returned or counted to zero first.",
   inputSchema,
   mutates: true,
   form: {

@@ -18,7 +18,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'record_scrap_sale',
   description:
-    "Record a scrap sale, auto-numbered SCS-####, inserting a ScrapSale row and one SCRAP_SALE (OUT) stock movement in the same transaction. Selling more than the material's current on-hand balance is ALLOWED — it succeeds, the balance goes negative, and the result carries a warning field (mirroring issue_material's negative-stock philosophy) — it is never rejected.",
+    "Record scrap sold to a scrap buyer: quantity, rate per unit and buyer. Selling more than is recorded as collected is allowed but flagged — mention it.",
   inputSchema,
   mutates: true,
   form: {

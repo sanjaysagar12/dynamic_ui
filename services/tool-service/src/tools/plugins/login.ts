@@ -15,7 +15,8 @@ const config = loadConfig();
 
 const tool: ToolDefinition<Args> = {
   name: 'login',
-  description: 'Authenticate with email and password, returning an access token.',
+  description:
+    "Sign in with email and password. Not used from chat.",
   inputSchema,
   requiresAuth: false,
   mutates: false,

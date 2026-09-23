@@ -28,7 +28,8 @@ type Args = z.infer<typeof inputSchema>;
 
 const tool: ToolDefinition<Args> = {
   name: 'create_job',
-  description: 'Create a new job (one release against a customer PO), auto-numbered JOB-<FY>-####.',
+  description:
+    "Create a new job: one customer order for one one-off design, with a quantity of pieces and a text description of the product. Link it to the customer's PO when there is one. A sample/prototype before a main job is its own job of type SAMPLE, linked to the main job. A repeat order of an old design is still a new job — never copy an old one.",
   inputSchema,
   mutates: true,
   form: {

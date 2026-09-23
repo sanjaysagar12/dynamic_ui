@@ -24,7 +24,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'return_material',
   description:
-    "Return leftover material from a job back to stock, posting one RETURN movement per line. Each movement's rate is always the material's CURRENT weighted-average rate, read fresh at call time — never caller-supplied (the input schema has no rate field at all). Rejects with NOTHING_ISSUED_FOR_MATERIAL for any line whose material was never issued to this job (no JobBomLine, or issuedQty is 0) — there's nothing to return.",
+    "Record leftover material coming back from a job to the store, usually when the job finishes. Returns go back in at the current average rate — never ask for a rate. Only materials that were issued to that job can be returned. Returns are what make the leak report trustworthy, so always ask about them before a job is closed.",
   inputSchema,
   mutates: true,
   requiredRoles: ['STOREKEEPER', 'OWNER'],

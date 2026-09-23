@@ -21,7 +21,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'create_customer_po',
   description:
-    'Create a customer PO (the umbrella PO a job release is raised against). Looks up or creates the customer by name if customerName is given. IMPORTANT: a repeated call with the same customer and the same number returns the EXISTING PO rather than creating a duplicate — this is a lookup-or-create, not a duplicate-rejection, so treat a second call that returns an already-existing PO as a success, not a failed create.',
+    "Record a purchase order received FROM A CUSTOMER (not one we send a supplier). Creates the customer if new. If the same customer and PO number already exist, it returns the existing one — that is normal for open POs, where the same PO number carries several releases over time. Each release becomes its own job.",
   inputSchema,
   mutates: true,
   form: {

@@ -34,7 +34,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'create_purchase_order',
   description:
-    'Create a purchase order. Looks up or creates the supplier by name if supplierName is given. Every line MUST carry an explicit rate — this tool NEVER defaults a missing rate to a past receipt rate; if any line is missing rate it fails with MISSING_RATE and inserts nothing, and the orchestrator should ask the user or call get_purchase_price_history and retry with an explicit rate. Automatically goes to PENDING_APPROVAL (and notifies every OWNER) when the computed totalValue exceeds the configured po.approval_threshold_inr Setting, otherwise it is APPROVED immediately.',
+    "Raise a purchase order to a SUPPLIER. Creates the supplier if new. Every line needs a quantity and a rate the user actually gives — never invent or silently reuse a rate; you may look up the last rate paid and suggest it, and use it only if the user agrees. Orders above the owner's approval limit wait for the owner; smaller ones are approved immediately. Tell the user which happened.",
   inputSchema,
   mutates: true,
   form: {
@@ -157,7 +157,7 @@ const tool: ToolDefinition<Args> = {
                   userId: owner.id,
                   type: 'PO_PENDING_APPROVAL',
                   title: `PO ${created.number} needs approval`,
-                  body: `Purchase order ${created.number} (₹${totalValue.toFixed(2)}) is above the approval threshold and needs your approval.`,
+                  body: `Purchase order ${created.number} for ₹${Math.round(totalValue).toLocaleString('en-IN')} is above your approval limit and is waiting for you.`,
                   entityType: 'PurchaseOrder',
                   entityId: created.id,
                 },

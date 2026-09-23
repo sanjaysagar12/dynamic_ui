@@ -16,7 +16,8 @@ type Args = z.infer<typeof inputSchema>;
 // that scoping is already handled when it isn't audited yet.
 const tool: ToolDefinition<Args> = {
   name: 'list_rows',
-  description: 'List rows from a table, with optional filtering, ordering, and a row limit.',
+  description:
+    "Generic list of rows from a table. A last resort — prefer the purpose-built tools. Never use it for users, settings, lots, audit events or notifications.",
   inputSchema,
   mutates: false,
   // The one tool whose display genuinely can't be authored in advance —

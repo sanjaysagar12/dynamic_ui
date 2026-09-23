@@ -10,7 +10,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'check_job_shortage',
   description:
-    "Compute per-material stock shortfall (requiredQty − on-hand, floored at 0) for a job's current BOM. The orchestrator should call this automatically right after a successful set_job_bom, and proactively suggest raising a purchase order (create_purchase_order, not yet available) for any material with a nonzero shortfall.",
+    "For a job's BOM, show how much of each material is needed versus what is in stock, and the shortfall. Run it right after a BOM is saved and whenever the user asks what a job is short of. If anything is short, offer to raise a purchase order for exactly the shortfall.",
   inputSchema,
   mutates: false,
   display: {

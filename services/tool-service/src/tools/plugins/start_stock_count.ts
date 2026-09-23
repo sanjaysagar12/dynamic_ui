@@ -15,7 +15,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'start_stock_count',
   description:
-    'Start a physical stock count: creates a DRAFT StockCount and one StockCountLine per target material (materialIds if given, else every active material), each with systemQty FROZEN to that material\'s current StockBalance.quantity, read inside the same transaction as the insert — a physical count against a system quantity that could shift underneath it defeats the whole point of a count. countedQty starts unset (null) on every line until submit_count_line records it.',
+    "Start a physical stock count. Freezes the system quantity of every material (or chosen materials) at this moment so later movements don't shift it. Counting can then be filled in over time. The opening count at go-live is a special one-time count that also records a rate and invoice number per material; there is only ever one.",
   inputSchema,
   mutates: true,
   form: {

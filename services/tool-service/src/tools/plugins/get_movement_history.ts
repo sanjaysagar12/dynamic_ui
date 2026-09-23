@@ -20,7 +20,7 @@ const DEFAULT_TAKE = 50;
 const tool: ToolDefinition<Args> = {
   name: 'get_movement_history',
   description:
-    'Get the stock movement ledger, filtered by materialId and/or jobId (at least one is required), newest first, cursor-paginated. Pass the previous response\'s nextCursor as cursor to get the next page. take defaults to 50, max 200.',
+    "Every stock movement for a material or a job, newest first: receipts, issues, returns, scrap, count adjustments and reversals, with who did it and when. Use it for 'who issued…', 'what happened to…', and to find a movement before the owner reverses it.",
   inputSchema,
   mutates: false,
   display: {

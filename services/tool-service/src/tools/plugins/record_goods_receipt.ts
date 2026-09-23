@@ -34,8 +34,7 @@ const PO_READY_STATUSES = ['APPROVED', 'PARTIALLY_RECEIVED'];
 const tool: ToolDefinition<Args> = {
   name: 'record_goods_receipt',
   description:
-    'Record a goods receipt (GRN) against a supplier delivery. Each line splits receivedQty into acceptedQty + rejectedQty — only accepted quantity becomes stock (a RECEIPT movement); rejected quantity is recorded and immediately leaves again (a REJECT_RETURN movement), so both are always visible in the ledger, never netted. ' +
-    'overrideConfirmed is a SEPARATE, STRONGER confirmation from the generic write-confirmation gate (confirmed: true): it specifically means "yes, receive against a purchase order that is not yet approved." If purchaseOrderId is given and that PO is still PENDING_APPROVAL, this call fails with PO_NOT_APPROVED unless overrideConfirmed is explicitly true. The orchestrator MUST ask the user about this as its own separate question — never inferred from the ordinary write confirmation.',
+    "Record material arriving from a supplier, usually against a purchase order. For every line: received, accepted and rejected quantities (accepted + rejected must equal received) and the rate. Only accepted goes into stock; rejected goes back and needs a reason. Capture the supplier's invoice number and date if given. If the purchase order is still waiting for the owner, ask in chat whether to receive it anyway before opening this — that is a separate decision. Mention it if the rate differs noticeably from the last one.",
   inputSchema,
   mutates: true,
   form: {

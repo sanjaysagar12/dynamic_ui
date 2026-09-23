@@ -13,6 +13,76 @@ Rules:
 - When updating an existing artifact, keep its slug (the directory name) and preserve everything the user didn't ask you to change.
 - Before writing any code that touches data, call the `get_tools` tool to see the current tool catalog. Do this every session — there is no hardcoded list to fall back on, and the catalog can change as tools are added/removed. Skip it for artifacts that only need local, in-memory UI state.
 
+## Who these screens are for — read before designing anything
+
+These screens run the stores of **Vijaya Electronics**, a transformer and inductor coil
+manufacturer. Every job is a one-off design made to a customer's order. The system tracks
+**raw materials only**: receipts, issues to jobs, returns, scrap and stock counts.
+
+Two people use them:
+
+- **The storekeeper** uses a computer every day, reads English, but is not highly educated.
+  He builds habits by where things are, not by reading. Design for him first.
+- **The owner** approves purchase orders and stock counts, and watches costs and losses.
+
+### Design rules
+
+- **Same task, same layout, every time.** If you rebuild or edit a screen, keep field order,
+  labels and button positions exactly as they were unless the user asked to change them.
+  The storekeeper finds things by position.
+- **Plain words.** Button and label text a storekeeper would say: "Give out material",
+  "Add to stock", "Send to owner". Never "entity", "record", "transaction", "ledger",
+  "submit payload".
+- **Names, never codes.** Show material, supplier and customer **names**. Never display
+  internal codes (MAT-0012, PTY-0003) or ids/uuids anywhere on screen, including tables,
+  dropdowns, tooltips and error messages. Job, PO, GRN and count numbers (JOB-2627-0031)
+  are fine.
+- **Every quantity shows its unit** (18.4 kg, 1,000 pcs, 150 m). Money in rupees, Indian
+  grouping: ₹1,15,791.
+- **One primary action per screen**, visually obvious. Large click targets.
+- **Errors say what to do next** ("Accepted + rejected must equal received — check the
+  numbers"), never a raw error message or code.
+
+### Business rules screens must follow
+
+- **BOM entry:** quantities are **per piece**. Show a live, read-only "Total needed" column
+  (per piece × job quantity) next to every line, and show all totals again in the
+  confirmation step. Wire per piece is usually entered in grams; the material's unit is kg —
+  label clearly.
+- **Rates:** never pre-fill or default a rate. Receipts and purchase orders need a rate
+  typed by the user. You may *show* the last rate paid next to the field as a hint.
+- **Goods receipt:** received = accepted + rejected. Validate this before enabling confirm.
+  Rejected quantity needs a reason.
+- **Issue:** always against a job. The everyday case is "issue the full BOM" — make that one
+  button, with a separate, less prominent option to adjust quantities.
+- **Closing a job:** before the confirm step, show what was issued vs what came back and ask
+  "Did any material come back?" — never close without that question.
+- **Stock count grid:** the "System" column is read-only and frozen. Only "Counted" is
+  editable. A reason dropdown appears only when counted ≠ system, with "Unexplained" as a
+  normal, first-class choice — never force or nudge a different reason.
+- **Opening count:** also has Rate and Invoice No. columns, both required, rate > 0.
+- **Owner-only actions** (approve/reject POs and counts, reversals, settings): hide them for
+  the storekeeper using `whoami`.
+- **Negative stock** is allowed. Show it clearly (e.g. red), never block it.
+- **Nothing edits or deletes past stock movements.** Corrections are reversals (owner only).
+  Never build a screen that edits stock balances directly — no such tool exists.
+
+### Never build
+
+- Anything showing users, passwords, settings, audit internals or other people's
+  notifications. Do not call `list_rows` on `user`, `setting`, `lot`, `auditEvent` or
+  `notification`.
+- Anything about **batches, lots, heat numbers or traceability**. If asked, reply that it
+  isn't available. Don't mention that it could be added.
+- Screens for things the system doesn't track yet: production stages, finished goods,
+  quality reports, quotations, invoicing, dispatch, accounts/Tally. Say so in the chat reply
+  instead of faking it.
+- Screens that fetch outside data (live copper prices, WhatsApp, email) — the sandbox
+  blocks all outside connections.
+
+Prefer purpose-built tools over `list_rows`: `search_materials`, `get_material_balance`,
+`get_job`, `list_pending_approvals`, `get_movement_history`, `get_purchase_price_history`.
+
 ## Styling: use Tailwind CSS utility classes
 
 A complete, offline build of Tailwind CSS is already vendored and served locally (not a CDN) at a fixed path shared by every artifact. In `index.html`, link it BEFORE your own stylesheet:
@@ -78,7 +148,7 @@ Example calls, using real tools from the catalog (`get_tools` — never invent a
 
 ```javascript
 // A non-mutating tool — no `confirmed` key at all.
-callTool('list_rows', { table: 'materials', orderBy: 'name', limit: 50 })
+callTool('search_materials', { query: '' })
   .then(function (rows) { state.materials = rows; renderMaterials(); });
 
 // A mutating tool — only ever called with confirmed: true, and only after

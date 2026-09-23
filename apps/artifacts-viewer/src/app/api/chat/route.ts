@@ -12,6 +12,7 @@ import {
   getCurrentArtifactSlug,
   getMessageHistory,
   getSessionById,
+  getLastRoute,
 } from '../../../lib/chat-sessions/store';
 import type { ChatTurnRequestPayload, ChatTurnResponsePayload } from '../../../lib/chat-sessions/types';
 import type { ChatRequestPayload } from '../../../lib/chat/types';
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ChatTurnRespo
 
   const history = [...priorHistory, { role: 'user' as const, content: translatedMessage }];
 
-  const route = await routeToAgent(translatedMessage);
+  const route = await routeToAgent(translatedMessage, await getLastRoute(session.id));
 
   try {
     if (route === 'artifact') {

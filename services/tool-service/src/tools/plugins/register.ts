@@ -24,7 +24,8 @@ const config = loadConfig();
 
 const tool: ToolDefinition<Args> = {
   name: 'register',
-  description: 'Create a new user account and return an access token.',
+  description:
+    "Create a user account. Not used from chat — accounts are set up by the administrator.",
   inputSchema,
   requiresAuth: false,
   mutates: true,

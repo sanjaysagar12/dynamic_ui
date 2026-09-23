@@ -16,7 +16,8 @@ interface JobMaterialCostRow {
 
 const tool: ToolDefinition<Args> = {
   name: 'get_job',
-  description: "Get a job's full detail — its BOM lines (with material info) and its running material-cost summary (issued − returned value, from the ledger).",
+  description:
+    "Show one job: customer, product, quantity, status, its BOM (per piece and total needed, issued, returned) and its material cost so far. Use it before issuing, returning or closing, so you can tell the user exactly what will happen.",
   inputSchema,
   mutates: false,
   display: {

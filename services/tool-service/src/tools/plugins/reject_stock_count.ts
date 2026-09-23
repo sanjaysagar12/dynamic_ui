@@ -13,7 +13,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'reject_stock_count',
   description:
-    'Reject a stock count currently PENDING_APPROVAL, persisting a required rejectionNote. Owner only. No movements are posted — the count moves to REJECTED and every active OWNER is notified (RECOUNT_REQUIRED) that a fresh count is needed.',
+    "OWNER ONLY. Send a submitted stock count back for recounting, with a note on what to recount. Stock doesn't change. The storekeeper needs to recount.",
   inputSchema,
   mutates: true,
   requiredRoles: ['OWNER'],

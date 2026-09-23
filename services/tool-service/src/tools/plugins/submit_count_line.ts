@@ -15,7 +15,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'submit_count_line',
   description:
-    "Record the counted quantity for one stock-count line. differenceQty is computed here (countedQty − systemQty), never left to a DB default. If the difference is non-zero and reasonCode is omitted, reasonCode is stored as 'UNEXPLAINED' — there is no retry/re-ask path in this tool; it never loops back to prompt for a reason. Only works while the parent StockCount is still DRAFT (NOT_DRAFT otherwise).",
+    "Record what was physically counted for one material in an open count. If it differs from the system quantity, ask for a reason ONCE — spillage, extra wastage, missing, entry error, or unexplained. 'I don't know' is UNEXPLAINED: accept it and move on, never ask again and never suggest a reason. On the opening count also record the rate and invoice number from the last purchase invoice; never suggest a rate, and don't ask for reasons.",
   inputSchema,
   mutates: true,
   form: {

@@ -52,6 +52,17 @@ export async function getCurrentArtifactSlug(sessionId: string): Promise<string 
   return last?.artifactSlug ?? null;
 }
 
+/** Which agent answered the most recent assistant message in this session, if any. The router
+ *  uses it to send short follow-ups ("yes", "100", "make it bigger") to the same agent. */
+export async function getLastRoute(sessionId: string): Promise<AgentType | undefined> {
+  const last = await prisma.chatMessage.findFirst({
+    where: { sessionId, role: 'assistant', route: { not: null } },
+    orderBy: { createdAt: 'desc' },
+    select: { route: true },
+  });
+  return (last?.route as AgentType | null) ?? undefined;
+}
+
 export async function appendMessage(
   sessionId: string,
   role: 'user' | 'assistant',

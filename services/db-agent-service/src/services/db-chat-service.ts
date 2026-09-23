@@ -3,6 +3,7 @@ import type { AppConfig } from '../config.js';
 import { DbAgentGenerationError, ToolServiceAuthError, ToolServiceError } from '../core/errors.js';
 import type { ChatDbRequest, ChatDbResponse, ChatMessage, SubmitFormRequest } from '../schemas.js';
 import { TOOL_RESULT_GUIDANCE } from './tool-guidance.js';
+import { BUSINESS_SYSTEM_PROMPT } from './business-prompt.js';
 import type { ToolCatalogEntry, ToolResult, ToolServiceClient } from './tool-service-client.js';
 
 /** Builds the Anthropic-facing input schema for one tool — tool-service's own args schema,
@@ -34,12 +35,11 @@ function toInputSchema(entry: ToolCatalogEntry): Anthropic.Tool.InputSchema {
 function toToolDescription(entry: ToolCatalogEntry): string {
   if (!entry.mutates) return entry.description;
   return (
-    `${entry.description} This action changes data. As soon as the user's intent clearly points to ` +
-    'this tool, call it immediately — pass along whatever arguments you can infer from the ' +
-    'conversation, or call it with none at all if you can\'t infer any; do NOT ask the user to type ' +
-    'the details in chat first, and do NOT wait for a more complete request. Calling this tool never ' +
-    'writes anything by itself — it hands the user a structured form (pre-filled with whatever you ' +
-    'passed) where they supply, correct, or complete every value and explicitly confirm.'
+    `${entry.description} [This tool changes data. Calling it opens a pre-filled form for the ` +
+    'user to check and submit — it writes nothing by itself. Pass every argument you can work ' +
+    'out; zero is fine. Don\'t ask in chat for details the form will ask for. In the sentence ' +
+    'you write alongside the form, restate what matters so the user can check it. Never say the ' +
+    'change is done — only the user\'s submission does that.]'
   );
 }
 
@@ -52,33 +52,7 @@ function toAnthropicTools(catalog: ToolCatalogEntry[]): Anthropic.Tool[] {
 }
 
 function buildSystemPrompt(): string {
-  return `
-You are a database assistant for an internal inventory system. Your available tools are listed
-for you dynamically, fetched fresh each turn — read each tool's own description and input schema
-to know what it does and what arguments it needs; never assume a tool exists beyond what's
-actually offered, and never invent arguments a tool's schema doesn't define.
-
-${TOOL_RESULT_GUIDANCE}
-
-Calling a tool that changes data does NOT write anything by itself — it hands the user a form to
-review and confirm, pre-filled with whatever arguments you were able to infer. This means you must
-NEVER ask the user clarifying questions in plain text before calling a data-changing tool — not
-even when the request is vague or has no details at all ("I need to add a material", "raise a PO"
-is already enough). The moment their intent points at a specific tool, call it right away, with
-as many arguments as you can infer — zero is fine. The form is the ONLY place details get asked
-for; a text question asking "what's the name / unit / quantity?" duplicates what the form already
-does and adds a pointless extra round trip. Never claim a change has been made — only the user's
-own form submission does that.
-
-When a read-only tool's result comes back, respond with ONE short sentence of framing — never a
-markdown table, bulleted list, or restatement of individual rows/values in your text. The result
-is rendered directly as a table, chart, or card immediately alongside your sentence, so anything
-you repeat from it is pure duplication the user sees twice.
-
-If a tool call fails with a genuine error, tell the user briefly that you ran into a problem,
-without technical detail, and don't guess at an outcome. Keep answers concise and grounded only
-in what the tools actually returned.
-`.trim();
+  return `${BUSINESS_SYSTEM_PROMPT}\n\n${TOOL_RESULT_GUIDANCE}`;
 }
 
 export class DbChatService {

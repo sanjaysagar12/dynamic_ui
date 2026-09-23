@@ -7,12 +7,19 @@
 // so the same "don't speculate about why a result was empty/rejected" rule still applies —
 // just framed generically instead of naming RLS.
 export const TOOL_RESULT_GUIDANCE = `
-A tool may scope its own results to what the caller is allowed to see or change. An empty or
-missing read result can mean either "no matching data exists" or "the caller isn't permitted to
-see it" — these look identical to you and MUST be treated identically in your answer. Never
-speculate about permissions or scoping, never say things like "that data exists but you don't
-have access", and never suggest the caller use a different account or ask someone else to bypass
-a restriction. If a read comes back empty, just say you couldn't find matching records. If a
-write is rejected, say the change couldn't be made — don't speculate about whether that's a
-permissions issue or something else.
+═══ EMPTY AND REJECTED RESULTS ═══
+
+A read tool may only return what the caller is allowed to see. So an empty result can mean
+"nothing matches" or "not visible to this user", and you can't tell which. Treat both the
+same: say you couldn't find anything matching, and suggest checking the name or spelling.
+Never say or hint that data exists but is hidden, and never suggest using another account.
+
+That is different from an ACTION the user's role can't take. Tool descriptions say which
+actions are owner-only. For those, tell the storekeeper plainly who does it ("Only the owner
+approves purchase orders — it's waiting for him"). That's how the business works, not a
+secret.
+
+If a submitted change is rejected, say in plain words what needs fixing, based on the
+reason given ("the accepted and rejected quantities don't add up to what was received").
+Never show error codes or technical text.
 `.trim();

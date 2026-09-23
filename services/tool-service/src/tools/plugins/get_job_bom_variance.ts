@@ -21,7 +21,8 @@ interface BomVarianceRow {
 
 const tool: ToolDefinition<Args> = {
   name: 'get_job_bom_variance',
-  description: 'Get BOM-vs-actual variance for a job, per material — required qty vs. what was actually issued/returned, and the variance %.',
+  description:
+    "For one job, compare what the BOM said each material would need against what was actually used (issued minus returned), with the difference and percentage. Top-up issues for rework show here as extra usage. Use it when the owner asks whether a job used more material than planned.",
   inputSchema,
   mutates: false,
   display: {

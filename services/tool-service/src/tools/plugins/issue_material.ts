@@ -26,7 +26,7 @@ interface EffectiveLine {
 const tool: ToolDefinition<Args> = {
   name: 'issue_material',
   description:
-    "Issue material to a job, posting one ISSUE stock movement per line at the material's current weighted-average rate. lines is OPTIONAL — omit it to default to the FULL OUTSTANDING BOM REQUIREMENT (requiredQty − issuedQty, per line) for every BOM line still short, which is the everyday call. Pass an explicit lines array only to issue a specific quantity instead (a partial issue, or a rework top-up). An explicit quantity greater than a line's outstanding BOM requirement is NOT rejected — it is issued and the resulting movement's notes are tagged 'rework top-up', on the assumption the storekeeper knows the shop floor needs more than the BOM said. Only works on a job whose status is OPEN or MATERIAL_ISSUED (JOB_NOT_ISSUABLE otherwise) and flips the job to MATERIAL_ISSUED on its first ISSUE. Issuing past what is currently on hand is ALLOWED — stock is permitted to go negative (see inventory_guards.sql) — but every active OWNER is notified (NEGATIVE_STOCK_WARNING) and the result carries a warning field when that happens.",
+    "Give out material from the store to a job. The everyday case: open it with no lines, which issues everything the job's BOM still needs — first read the job so you can list each material with quantity and unit that will go out. Give lines only for a partial issue or an extra top-up for rework (more than the BOM is allowed and marked as a top-up). Always against a job; ask which job if none is named. Stock may go negative; that is allowed and the owner is notified — mention it in one sentence.",
   inputSchema,
   mutates: true,
   requiredRoles: ['STOREKEEPER', 'OWNER'],
@@ -176,14 +176,22 @@ const tool: ToolDefinition<Args> = {
             // create_purchase_order.ts's PO_PENDING_APPROVAL — no
             // "notify all owners" helper exists yet, so this is inlined here too.
             const owners = await tx.user.findMany({ where: { role: 'OWNER', isActive: true } });
+            // Owners read these — show the material's name and unit, never its id.
+            const negMaterials = await tx.material.findMany({
+              where: { id: { in: negativeMaterials.map((n) => n.materialId) } },
+              select: { id: true, name: true, uom: true },
+            });
+            const materialLabel = new Map(negMaterials.map((m) => [m.id, m]));
             for (const neg of negativeMaterials) {
+              const mat = materialLabel.get(neg.materialId);
+              const qtyText = `${neg.quantity.toLocaleString('en-IN')} ${mat ? mat.uom.toLowerCase() : ''}`.trim();
               for (const owner of owners) {
                 await tx.notification.create({
                   data: {
                     userId: owner.id,
                     type: 'NEGATIVE_STOCK_WARNING',
                     title: `Negative stock after issuing to job ${job.number}`,
-                    body: `Issuing to job ${job.number} took material ${neg.materialId}'s balance to ${neg.quantity} — shop-floor paperwork may be lagging reality.`,
+                    body: `${mat ? mat.name : 'A material'} is now at ${qtyText} after issuing to job ${job.number}. Stock may have been received but not yet entered.`,
                     entityType: 'Material',
                     entityId: neg.materialId,
                   },

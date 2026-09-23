@@ -7,7 +7,8 @@ type Args = z.infer<typeof inputSchema>;
 
 const tool: ToolDefinition<Args> = {
   name: 'whoami',
-  description: 'Return the identity of the currently authenticated caller.',
+  description:
+    "Who is signed in and their role (STOREKEEPER or OWNER). Call it when the answer depends on the user's role — e.g. before offering approvals, reversals, settings or rupee values.",
   inputSchema,
   mutates: false,
   display: {

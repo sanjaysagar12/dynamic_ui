@@ -9,7 +9,8 @@ type Args = z.infer<typeof inputSchema>;
 
 const tool: ToolDefinition<Args> = {
   name: 'get_material_balance',
-  description: 'Get current stock balance for one or more materials.',
+  description:
+    "Current stock of one or more materials: quantity with unit and, for the owner, average rate and total value. Use it for any 'how much X do we have' question.",
   inputSchema,
   mutates: false,
   display: {

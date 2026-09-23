@@ -12,7 +12,8 @@ type Args = z.infer<typeof inputSchema>;
 
 const tool: ToolDefinition<Args> = {
   name: 'reject_purchase_order',
-  description: 'Reject a purchase order currently PENDING_APPROVAL, persisting a required reason. Owner only.',
+  description:
+    "OWNER ONLY. Reject a purchase order waiting for the owner, with a reason. Nothing is bought and stock doesn't change; the storekeeper should be told why.",
   inputSchema,
   mutates: true,
   requiredRoles: ['OWNER'],

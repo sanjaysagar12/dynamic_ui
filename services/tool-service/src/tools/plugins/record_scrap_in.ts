@@ -15,7 +15,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'record_scrap_in',
   description:
-    "Record scrap material collected off the floor, posting one SCRAP_IN stock movement. Only valid against a material flagged isScrap: true (NOT_SCRAP_MATERIAL otherwise). rate defaults to 0 when omitted — floor scrap typically has no cost basis until it's sold.",
+    "Record copper scrap collected off the shop floor into the scrap material, optionally noting which job it came from. Only works for materials marked as scrap.",
   inputSchema,
   mutates: true,
   form: {

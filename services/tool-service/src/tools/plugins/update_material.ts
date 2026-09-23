@@ -22,7 +22,8 @@ type Args = z.infer<typeof inputSchema>;
 
 const tool: ToolDefinition<Args> = {
   name: 'update_material',
-  description: 'Update a material master row (name, minimumLevel, hsnCode, gstRate only — uom/stockType are immutable).',
+  description:
+    "Change a material's name, minimum level, HSN code or GST rate. Its unit and whether it's kept in stock or bought per job can't be changed — explain that changing the unit would change the meaning of every past quantity.",
   inputSchema,
   mutates: true,
   form: {

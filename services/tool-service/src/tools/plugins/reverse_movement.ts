@@ -18,7 +18,7 @@ const OPPOSITE_DIRECTION = {
 const tool: ToolDefinition<Args> = {
   name: 'reverse_movement',
   description:
-    'Reverse a stock movement by posting a new, opposite-direction REVERSAL movement linked to it via reversalOfId, with the same quantity/rate/material/job as the original — the original row is NEVER edited or deleted (the ledger is append-only; corrections are always new rows). Before calling this with confirmed: true, the orchestrator MUST show the user exactly what will change: the material, the quantity being reversed, the job (if any) the original movement was posted against, and the resulting balance after the reversal — this posts a permanent correcting entry, not an edit, and cannot itself be undone except by reversing the reversal in turn. A movement can only be reversed once; reversing an already-reversed movement fails with ALREADY_REVERSED. Owner only.',
+    "OWNER ONLY. Correct a mistaken stock movement by posting an opposite entry. The original is never edited or deleted — both stay visible. Before the owner confirms, show the material, quantity, job (if any), the date of the original and the stock balance after the reversal. Each movement can be reversed only once. If the storekeeper asks, explain that corrections are done by the owner.",
   inputSchema,
   mutates: true,
   destructive: true,

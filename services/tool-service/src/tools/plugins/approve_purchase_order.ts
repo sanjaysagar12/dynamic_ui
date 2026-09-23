@@ -11,7 +11,8 @@ type Args = z.infer<typeof inputSchema>;
 
 const tool: ToolDefinition<Args> = {
   name: 'approve_purchase_order',
-  description: 'Approve a purchase order currently PENDING_APPROVAL. Owner only.',
+  description:
+    "OWNER ONLY. Approve a purchase order that is waiting for the owner (above the approval limit). Before the owner confirms, show the supplier, what is being bought with quantities and units, the rate, the total in rupees, and which job's shortage triggered it if any. If the storekeeper asks for this, don't open it — tell him only the owner approves and it is waiting for him.",
   inputSchema,
   mutates: true,
   requiredRoles: ['OWNER'],

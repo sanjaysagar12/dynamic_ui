@@ -19,7 +19,8 @@ type Args = z.infer<typeof inputSchema>;
 
 const tool: ToolDefinition<Args> = {
   name: 'create_material',
-  description: 'Create a new material master row, auto-numbered MAT-####.',
+  description:
+    "Add a new material to the store. Needs a name exactly as the storekeeper says it, ONE unit used for both buying and issuing (KG, NOS for pieces, MTR, LTR, ROLL, SET), and whether it is kept in stock (STANDING — needs a minimum level) or bought per job (PER_JOB). Copper scrap is a material marked as scrap. Before opening this, search for existing materials with a similar name; if one exists, ask whether it's the same. Unit and stock type can't be changed later.",
   inputSchema,
   mutates: true,
   form: {

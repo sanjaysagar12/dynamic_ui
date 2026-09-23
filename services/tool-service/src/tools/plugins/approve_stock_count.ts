@@ -12,7 +12,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'approve_stock_count',
   description:
-    'Approve a stock count currently PENDING_APPROVAL. Owner only. Flips the count to APPROVED, then posts one COUNT_ADJUSTMENT stock movement per line with a non-zero difference (direction IN for a positive difference, OUT for negative, at the material\'s current average rate) — zero-difference lines post nothing. The status flip commits before any movement insert: trg_guard_count_adjustment (inventory_guards.sql) independently re-checks the count\'s status before allowing a COUNT_ADJUSTMENT, so this ordering is load-bearing, not stylistic.',
+    "OWNER ONLY. Approve a stock count that is waiting for the owner. Approval changes stock to match what was physically counted: every material whose count differed gets an adjustment at its current average rate; matching materials are untouched. For the opening count, approval puts the opening stock in at the rates taken from invoices. Before the owner confirms, show how many materials differ, the biggest differences with their reasons, and the total rupee value of the differences. This cannot be undone except by later counts.",
   inputSchema,
   mutates: true,
   destructive: true,

@@ -27,7 +27,8 @@ export async function findMaterialsByName(
 
 const tool: ToolDefinition<Args> = {
   name: 'search_materials',
-  description: 'Search materials by name (case-insensitive substring match).',
+  description:
+    "Find materials by part of their name, ignoring case. Use it to match what the user typed (including typos and missing hyphens, e.g. 'ferrite core e30') to the real material, and before creating a new one to avoid duplicates.",
   inputSchema,
   mutates: false,
   display: {

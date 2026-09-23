@@ -12,7 +12,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'submit_stock_count',
   description:
-    'Submit a DRAFT stock count for owner approval, moving it to PENDING_APPROVAL. Rejects with INCOMPLETE_COUNT if any of its lines still has no countedQty recorded. Computes a variance summary (materials with a non-zero difference, total variance value at each material\'s current average rate) inside the same transaction as the status flip and notification insert — never deferred to whatever later reads the notification.',
+    "Send a finished stock count to the owner for approval. Every material must have a counted quantity first (and on the opening count, a rate and invoice number) — if not, list exactly what's missing. Stock doesn't change until the owner approves.",
   inputSchema,
   mutates: true,
   form: {
@@ -75,7 +75,7 @@ const tool: ToolDefinition<Args> = {
                 userId: owner.id,
                 type: 'COUNT_PENDING_APPROVAL',
                 title: `Stock count ${updated.number} needs approval`,
-                body: `Stock count ${updated.number}: ${materialsWithDifference} material(s) with a difference, total variance value ₹${totalVarianceValue.toFixed(2)}.`,
+                body: `Stock count ${updated.number}: ${materialsWithDifference} material(s) with a difference, total difference ₹${Math.round(totalVarianceValue).toLocaleString('en-IN')}. Waiting for your approval.`,
                 entityType: 'StockCount',
                 entityId: updated.id,
               },

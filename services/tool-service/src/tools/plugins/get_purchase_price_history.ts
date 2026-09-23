@@ -11,7 +11,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'get_purchase_price_history',
   description:
-    "Get a material's purchase rate history from recorded goods receipts, most recent first — optionally filtered to a single supplier. Useful for suggesting a rate when create_purchase_order rejects a line for MISSING_RATE.",
+    "What was paid for a material on past receipts, newest first, per supplier with dates. Use it when the owner asks about price trends or which supplier is cheaper, and to SUGGEST a rate when the user doesn't give one (only used if they agree).",
   inputSchema,
   mutates: false,
   display: {

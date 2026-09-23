@@ -24,7 +24,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'set_job_bom',
   description:
-    'Set (replace) a job\'s bill of materials, one line per material at qtyPerPiece — requiredQty is computed as qtyPerPiece × job.quantity for every line. This is the highest-value confirm-before-write tool in the whole catalog: before calling this with confirmed: true, the orchestrator MUST restate the full computed requiredQty for every line back to the user in plain text and get explicit agreement — a wrong BOM drives every downstream shortage/purchase/issue decision for the job. Only works on a job whose status is OPEN; for adding material to a job already past that stage, use add_bom_line instead (not yet available).',
+    "Enter or replace a job's bill of materials: one line per material with the quantity PER PIECE. Total needed = per piece × job quantity. Before opening this, if any number might be a total for the whole job rather than per piece, ask. Alongside the form, list every line as 'name — per piece → total' with units. Only possible before any material is issued; after that, extra material is a top-up issue. After it is saved, check the job's shortage.",
   inputSchema,
   mutates: true,
   form: {

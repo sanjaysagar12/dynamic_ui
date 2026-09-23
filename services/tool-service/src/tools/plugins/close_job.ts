@@ -12,7 +12,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'close_job',
   description:
-    "Close a job: computes materialCost as SUM(ISSUE movement value) − SUM(RETURN movement value) directly from the stock_movements ledger for this job (never from a possibly-stale aggregate elsewhere), sets status to CLOSED and closedAt to now, and ALWAYS returns a per-BOM-line outstanding-quantity summary (issuedQty − returnedQty vs. requiredQty) for the owner to eyeball — every line, regardless of how small the variance is, no threshold is applied. This tool has NO way to know whether the orchestrator already asked the user about any outstanding/unreturned material before calling it — that confirmation must happen in the conversation BEFORE calling this with confirmed: true; the tool itself cannot verify or block on it.",
+    "Close a job once production is finished. Fixes the job's material cost (value issued minus value returned) and shows issued vs returned vs BOM for every material. BEFORE opening this, if the job had material issued, ask the user in chat whether anything came back — and record returns first. Never close assuming nothing was returned.",
   inputSchema,
   mutates: true,
   requiredRoles: ['STOREKEEPER', 'OWNER'],

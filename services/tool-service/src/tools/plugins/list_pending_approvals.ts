@@ -9,7 +9,8 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const tool: ToolDefinition<Args> = {
   name: 'list_pending_approvals',
-  description: 'List everything currently awaiting OWNER approval — purchase orders and stock counts pending approval.',
+  description:
+    "Everything waiting for the owner: purchase orders above the approval limit and submitted stock counts. Use it when the owner asks what needs his attention, and at the start of the day.",
   inputSchema,
   mutates: false,
   display: {

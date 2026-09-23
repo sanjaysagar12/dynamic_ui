@@ -2,6 +2,7 @@
 
 import { useRef } from 'react';
 import { useArtifactDataBridge } from '../hooks/useArtifactDataBridge';
+import { ConfirmMutationDialog } from './ConfirmMutationDialog';
 
 /**
  * Artifacts are untrusted content (arbitrary HTML/JS from the artifacts server,
@@ -30,17 +31,20 @@ export interface ArtifactFrameProps {
 
 export function ArtifactFrame({ src, title, reloadNonce }: ArtifactFrameProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  useArtifactDataBridge(iframeRef);
+  const { pendingConfirmation, confirmPending, cancelPending } = useArtifactDataBridge(iframeRef);
 
   return (
-    <iframe
-      ref={iframeRef}
-      key={`${src}:${reloadNonce ?? ''}`}
-      src={src}
-      title={title}
-      sandbox="allow-scripts"
-      referrerPolicy="no-referrer"
-      style={{ width: '100%', height: '100%', border: 'none' }}
-    />
+    <>
+      <iframe
+        ref={iframeRef}
+        key={`${src}:${reloadNonce ?? ''}`}
+        src={src}
+        title={title}
+        sandbox="allow-scripts"
+        referrerPolicy="no-referrer"
+        style={{ width: '100%', height: '100%', border: 'none' }}
+      />
+      <ConfirmMutationDialog pending={pendingConfirmation} onConfirm={confirmPending} onCancel={cancelPending} />
+    </>
   );
 }

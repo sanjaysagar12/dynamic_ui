@@ -100,8 +100,7 @@ Artifacts never talk to a database directly. All data reads/writes go through a 
 
 - Before writing any code that touches data, call `get_tools` to see the current catalog. Do this every session — there is no hardcoded list to fall back on, and the catalog can change as tools are added/removed.
 - Match tools to what the user actually asked for. Don't wire up every available tool "just in case" — an artifact that only needs to list and create rows should only call the tools it needs, not also import a delete tool unasked.
-- If a tool is marked `(mutates)`, the UI must show an explicit confirmation step (a modal, or an inline "Confirm" state) before calling it — never fire a mutating tool directly off a single click, even if the prompt implies urgency.
-- If a tool is marked `(destructive)`, the confirmation must restate exactly what will change/be deleted, not a generic "Are you sure?".
+- If a tool is marked `(mutates)`, just call it — do not build your own "are you sure?" dialog, modal, or inline confirm state. The platform itself intercepts every mutating call before it ever reaches tool-service and shows its own confirmation UI (the real tool name and arguments, with visually distinct treatment for `(destructive)` tools) — any `confirmed` value your code sends is ignored. This is a genuine simplification, not just a security note: focus your generated code on what happens *after* a successful response, not on gating the write itself.
 - If a tool lists required roles, and the artifact can determine the current user's role (call the `whoami` tool through the bridge — it returns `{ userId, email, role }` directly), hide or disable the control rather than showing it and letting the call fail with 403. If role can't be determined client-side, it's fine to show the control and let a 403 surface as an error message.
 - If no tool in the catalog covers what the user asked for, say so in the chat reply instead of faking it by stitching generic read tools together client-side — that duplicates logic that belongs in `tool-service`, not the artifact.
 - A tool's `inputSchema` (JSON Schema, from `get_tools`) is the source of truth for its arguments, including any restricted set of values (a JSON Schema `enum` array on a property). Populate `<select>`/radio-group options only from what a tool's schema actually reports; never invent or guess allowed values. Writing an unlisted value fails at the tool with a validation error, not a friendly message — getting the options list right up front is the only real defense.
@@ -122,11 +121,12 @@ window.addEventListener('message', function (event) {
   callback(data.status, data.body);
 });
 
-function callTool(name, args, confirmed) {
+function callTool(name, args) {
   return new Promise(function (resolve, reject) {
     var requestId = crypto.randomUUID();
     pending[requestId] = function (status, responseBody) {
       if (status >= 200 && status < 300 && responseBody && responseBody.ok) resolve(responseBody.data);
+      else if (responseBody && responseBody.code === 'USER_CANCELLED') resolve(null);
       else reject(new Error((responseBody && responseBody.error) || 'Request failed (status ' + status + ')'));
     };
     window.parent.postMessage(
@@ -136,7 +136,6 @@ function callTool(name, args, confirmed) {
         requestId: requestId,
         tool: name,
         args: args,
-        confirmed: confirmed, // only include this key at all when the tool is marked (mutates)
       },
       '*'
     );
@@ -147,18 +146,22 @@ function callTool(name, args, confirmed) {
 Example calls, using real tools from the catalog (`get_tools` — never invent a tool name):
 
 ```javascript
-// A non-mutating tool — no `confirmed` key at all.
+// A non-mutating tool.
 callTool('search_materials', { query: '' })
   .then(function (rows) { state.materials = rows; renderMaterials(); });
 
-// A mutating tool — only ever called with confirmed: true, and only after
-// the UI has already shown the user an explicit confirmation step.
-callTool('create_material', { name: name, uom: uom, stockType: stockType }, true)
-  .then(function (material) { closeModal(); toast('Created.', 'success'); refreshList(); })
+// A mutating tool — call it directly, the same as any other tool. The
+// platform shows its own confirmation dialog before this reaches
+// tool-service; your code doesn't gate the write itself.
+callTool('create_material', { name: name, uom: uom, stockType: stockType })
+  .then(function (material) {
+    if (material === null) return; // user cancelled the platform's confirmation dialog
+    closeModal(); toast('Created.', 'success'); refreshList();
+  })
   .catch(function (err) { toast('Save failed: ' + err.message, 'error'); });
 ```
 
 - `tool` is a real tool name from `get_tools` — never an invented table name or endpoint. `args` must match that tool's own `inputSchema` exactly — don't add fields it doesn't define and don't omit ones it requires.
-- `confirmed: true` is required — and must only ever be sent after the user has actually confirmed the specific action in the UI — when the tool is marked `(mutates)` in the catalog; omit the `confirmed` key entirely for a non-mutating tool.
-- The response body, once unwrapped by `callTool` above, is the tool's own `data` on success; on failure the promise rejects with the tool's own `error` message. Don't unwrap `status`/`body`/`ok` yourself outside of `callTool` — always go through it (or an equivalent helper that does the same check) so a `200` response carrying `{ ok: false }` is never mistaken for success.
+- Do not build or pass a `confirmed` flag — that's the platform's own concern now (see the `(mutates)` rule above), not something your generated code manages.
+- The response body, once unwrapped by `callTool` above, is the tool's own `data` on success; on failure the promise rejects with the tool's own `error` message, EXCEPT when the user cancels the platform's confirmation dialog (`code: 'USER_CANCELLED'`), which resolves with `null` rather than rejecting, since declining a write isn't an error — always check for that case on a mutating call the way the `create_material` example above does. Don't unwrap `status`/`body`/`ok` yourself outside of `callTool` — always go through it (or an equivalent helper that does the same check) so a `200` response carrying `{ ok: false }` is never mistaken for success.
 - The parent authenticates, authorizes, and forwards the request to tool-service under the logged-in user's own identity; the artifact never sees a credential or connects to tool-service/any backend directly.

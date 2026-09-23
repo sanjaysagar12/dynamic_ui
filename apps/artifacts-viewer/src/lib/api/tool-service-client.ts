@@ -41,3 +41,24 @@ export function toolServiceRegister(email: string, password: string, role?: stri
 export function executeTool(name: string, args: unknown, confirmed: boolean | undefined, accessToken: string): Promise<ToolResponse> {
   return callExecute(name, args, confirmed, accessToken);
 }
+
+export interface ToolCatalogEntry {
+  name: string;
+  description: string;
+  inputSchema: unknown;
+  mutates: boolean;
+  destructive: boolean;
+  requiredRoles: string[];
+}
+
+/** Fetches tool-service's `GET /tools` catalog — public metadata, no auth required, same as
+ *  tool-service treats it. Used by app/api/tools/route.ts to back the browser-side
+ *  useToolCatalog hook, which is the real authority on whether a tool needs the platform's own
+ *  confirmation dialog (see useArtifactDataBridge.ts) rather than trusting an artifact's claim. */
+export async function fetchToolCatalog(): Promise<{ tools: ToolCatalogEntry[] }> {
+  const response = await fetch(new URL('/tools', getToolServiceUrl()), { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`tool-service GET /tools returned ${response.status}`);
+  }
+  return response.json();
+}

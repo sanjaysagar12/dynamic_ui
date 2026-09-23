@@ -136,14 +136,20 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
-  catalogForListing(): ToolCatalogEntry[] {
+  /** `role` is the caller's tool-service role, already verified by the HTTP layer (see
+   *  tools.router.ts) — null when the request carried no (or an invalid/expired) token. Passing
+   *  null returns every tool regardless of requiredRoles: GET /tools is also called with no auth
+   *  at artifact-generation time (opencode's get_tools.ts), and that path's real security boundary
+   *  is each tool's own requiredRoles check at execute time, not what this listing shows — it must
+   *  keep seeing the full catalog. Only filter once a caller's role is actually known. */
+  catalogForListing(role: string | null = null): ToolCatalogEntry[] {
     // Any requiresAuth: false tool is a UI-only, dedicated-form flow
     // (register/login today, whatever else joins that list later) — there's
     // no legitimate reason for a chat agent to ever see or call one, so it's
     // excluded from the agent-visible catalog on that basis alone, not by
     // name. This only changes what GET /tools *lists* — POST
     // /tools/:name/execute still calls these tools directly by name.
-    return Array.from(this.tools.values())
+    const entries = Array.from(this.tools.values())
       .filter((tool) => tool.requiresAuth !== false)
       .map((tool) => ({
         name: tool.name,
@@ -155,5 +161,8 @@ export class ToolRegistry {
         form: tool.form,
         display: tool.display,
       }));
+
+    if (role === null) return entries;
+    return entries.filter((entry) => entry.requiredRoles.length === 0 || entry.requiredRoles.includes(role));
   }
 }

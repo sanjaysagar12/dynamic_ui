@@ -9,13 +9,28 @@ interface ExecuteBody {
   confirmed?: boolean;
 }
 
+/** Same verification POST /tools/:name/execute uses (verifyToken, below), but GET /tools must
+ *  stay reachable with no auth at all — opencode's get_tools.ts calls it at artifact-generation
+ *  time with no token by design (see AGENTS.md) — so a missing header or a garbage/expired token
+ *  both just fall through to `null` (unfiltered) instead of 401ing the request. */
+function resolveListingRole(header: string | undefined, jwtSecret: string): string | null {
+  if (!header?.startsWith('Bearer ')) {
+    return null;
+  }
+  try {
+    return verifyToken(header.slice('Bearer '.length).trim(), jwtSecret).role;
+  } catch {
+    return null;
+  }
+}
+
 export function registerToolsRoutes(
   fastify: FastifyInstance,
   registry: ToolRegistry,
   prisma: PrismaClient,
   jwtSecret: string,
 ): void {
-  fastify.get('/tools', async () => ({ tools: registry.catalogForListing() }));
+  fastify.get('/tools', async (request) => ({ tools: registry.catalogForListing(resolveListingRole(request.headers.authorization, jwtSecret)) }));
 
   fastify.post<{ Params: { name: string }; Body: ExecuteBody }>('/tools/:name/execute', async (request, reply) => {
     const tool = registry.get(request.params.name);

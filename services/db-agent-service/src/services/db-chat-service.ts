@@ -72,7 +72,7 @@ export class DbChatService {
   async chat(request: ChatDbRequest): Promise<ChatDbResponse> {
     const model = request.model || this.config.defaultModel;
     const messages: Anthropic.MessageParam[] = request.messages.map((m) => ({ role: m.role, content: m.content }));
-    const catalog = await this.toolService.fetchToolCatalog();
+    const catalog = await this.toolService.fetchToolCatalog(request.jwt);
     return this.runTurn(model, messages, catalog, request.messages, request.jwt);
   }
 
@@ -80,7 +80,7 @@ export class DbChatService {
    *  Calls tool-service directly with confirmed: true — form submission IS the confirmation, no
    *  further model round-trip needed to decide whether to proceed. */
   async submitForm(request: SubmitFormRequest): Promise<ChatDbResponse> {
-    const catalog = await this.toolService.fetchToolCatalog();
+    const catalog = await this.toolService.fetchToolCatalog(request.jwt);
     const entry = catalog.find((e) => e.name === request.toolName);
     if (!entry) {
       return this.textResponse(`Unknown tool "${request.toolName}".`, request.messages);
@@ -122,7 +122,7 @@ export class DbChatService {
       return this.textResponse(successLine, request.messages);
     }
 
-    const catalog = await this.toolService.fetchToolCatalog();
+    const catalog = await this.toolService.fetchToolCatalog(request.jwt);
     const catalogByName = new Map(catalog.map((e) => [e.name, e]));
     const followUps: { tool: string; result: ToolResult }[] = [];
 

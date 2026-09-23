@@ -381,4 +381,24 @@ describe('HTTP error translation (over real HTTP, not the handler directly)', ()
     expect(res.body.code).toBe('FORBIDDEN_ROLE');
     assertNoLeak(res);
   });
+
+  // Permanent regression guard for "Anyone can read any table through
+  // list_rows, including user.passwordHash" — see
+  // src/tools/list-rows-allowlist.ts. If this test ever starts failing, the
+  // allowlist has been weakened; do not loosen this test to make it pass
+  // again without a very deliberate, separate decision to do so.
+  it('list_rows against the "user" table is refused outright, with no passwordHash anywhere in the response', async () => {
+    const res = await request(testApp.baseUrl)
+      .post('/tools/list_rows/execute')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ args: { table: 'user' }, confirmed: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.code).toBe('TABLE_NOT_ALLOWED');
+
+    const serialized = JSON.stringify(res.body);
+    expect(serialized.toLowerCase()).not.toContain('passwordhash');
+    assertNoLeak(res);
+  });
 });

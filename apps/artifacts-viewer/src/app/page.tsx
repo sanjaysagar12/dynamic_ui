@@ -1,5 +1,5 @@
-import { ArtifactViewer } from '../components/ArtifactViewer';
+import { WorkspaceShell } from '../components/workspace/WorkspaceShell';
 
 export default function Index() {
-  return <ArtifactViewer />;
+  return <WorkspaceShell />;
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ROLES } from '@org/shared-types';
 import { AgentServiceError, chatWithAgent } from '../../../lib/api/artifact-agent-service-client';
 import { chatWithDbAgent, DbAgentServiceError } from '../../../lib/api/db-agent-service-client';
+import { translateToEnglish } from '../../../lib/api/gemini-client';
 import { extractAccessToken } from '../../../lib/http/data-request-auth';
 import { routeToAgent } from '../../../lib/unified-chat/agent-router';
 import { resolveUserId } from '../../../lib/chat-sessions/auth';
@@ -48,11 +49,24 @@ export async function POST(req: NextRequest): Promise<NextResponse<ChatTurnRespo
 
   const priorHistory = await getMessageHistory(session.id);
   // Persisted before either backend agent is called — a request that fails partway through
-  // (network error, agent timeout, …) still leaves the user's own message recorded.
+  // (network error, agent timeout, …) still leaves the user's own message recorded. Always the
+  // original text, regardless of language — translation below is transient, used only for
+  // routing/the agent call, never stored.
   await appendMessage(session.id, 'user', payload.message);
-  const history = [...priorHistory, { role: 'user' as const, content: payload.message }];
 
-  const route = await routeToAgent(payload.message);
+  // Translate to English before routing/calling an agent, so both see consistent English input
+  // regardless of what language the user typed or spoke in. Best-effort: a translation failure
+  // shouldn't fail the whole turn, just fall back to routing the original text as-is.
+  let translatedMessage = payload.message;
+  try {
+    translatedMessage = await translateToEnglish(payload.message);
+  } catch (err) {
+    console.error('Translation failed, falling back to original text:', err);
+  }
+
+  const history = [...priorHistory, { role: 'user' as const, content: translatedMessage }];
+
+  const route = await routeToAgent(translatedMessage);
 
   try {
     if (route === 'artifact') {

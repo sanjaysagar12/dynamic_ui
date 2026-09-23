@@ -9,22 +9,6 @@ function isNonEmptyString(value: unknown): value is string {
 // Wire-format DTOs: field names intentionally mirror the previous FastAPI/
 // pydantic JSON contract (snake_case) so the frontend needs zero changes.
 
-export interface GenerateArtifactRequest {
-  prompt: string;
-  slug: string | null;
-  roles: string[];
-}
-
-export interface GenerateArtifactResponse {
-  slug: string;
-  title: string;
-  reply: string;
-  roles: string[];
-  url_path: string;
-  preview_url: string;
-  files_written: string[];
-}
-
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -69,18 +53,6 @@ export interface CreateSkillRequest {
 export interface UpdateSkillRequest {
   description: string;
   content: string;
-}
-
-export function parseGenerateArtifactRequest(body: unknown): GenerateArtifactRequest {
-  const b = (body ?? {}) as Record<string, unknown>;
-  if (!isNonEmptyString(b.prompt)) {
-    throw new ValidationError('prompt is required and must be a non-empty string');
-  }
-  return {
-    prompt: b.prompt,
-    slug: isNonEmptyString(b.slug) ? b.slug : null,
-    roles: Array.isArray(b.roles) && b.roles.length > 0 ? (b.roles as string[]) : [...ROLES],
-  };
 }
 
 export function parseChatRequest(body: unknown): ChatRequest {

@@ -183,8 +183,11 @@ services:
     # src/lib/unified-chat/agent-router.ts) to classify each message as an
     # artifact or database request before forwarding it — so it needs
     # ANTHROPIC_API_KEY and AGENT_ROUTER_MODEL too, same as
-    # artifact-agent-service/db-agent-service. No entry needed here for
-    # either: env_file below already injects the whole root `.env` (see
+    # artifact-agent-service/db-agent-service. It also calls Gemini directly
+    # (see src/lib/api/gemini-client.ts) for voice-input transcription and
+    # per-turn input translation, so it needs its own GEMINI_API_KEY too — no
+    # other service reads this var. No entry needed here for any of these:
+    # env_file below already injects the whole root `.env` (see
     # .env.example) into this container.
     env_file: .env
     environment:

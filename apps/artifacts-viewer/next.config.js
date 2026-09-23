@@ -13,11 +13,14 @@ const nextConfig = {
   // Without pointing the file tracer at the repo root, standalone output
   // would miss those hoisted packages and fail at runtime.
   outputFileTracingRoot: join(__dirname, '../../'),
-  // /db-chat was a real route before the unified /chat page merged it in
-  // (see components/chat/ChatPage.tsx) — redirect anyone with the old URL
-  // bookmarked instead of leaving them at a 404.
+  // /db-chat and /chat were real routes before the workspace shell (design.md
+  // §11) merged everything into the single state-driven `/` page — redirect
+  // anyone with an old URL bookmarked instead of leaving them at a 404.
   async redirects() {
-    return [{ source: '/db-chat', destination: '/chat', permanent: false }];
+    return [
+      { source: '/db-chat', destination: '/', permanent: false },
+      { source: '/chat', destination: '/', permanent: false },
+    ];
   },
 };
 

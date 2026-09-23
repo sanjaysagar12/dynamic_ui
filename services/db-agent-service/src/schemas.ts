@@ -74,7 +74,11 @@ export type DisplaySpec =
 // alike. `text` on the data-bearing variants is Claude's one short sentence of framing alongside the
 // structured result (Part 3d) — never a substitute for the structure itself.
 export type ChatDbResponse =
-  | { type: 'text'; text: string; messages: ChatMessage[] }
+  // `postWriteFollowUp` is set only when this text came from a post-write hook's follow-up
+  // narration (services/post-write-hooks.ts) — the signal apps/artifacts-viewer's submit-form
+  // route uses to decide whether this reply is new information worth persisting to the chat
+  // session, as opposed to a plain "✓ ..." line no hook produced.
+  | { type: 'text'; text: string; messages: ChatMessage[]; postWriteFollowUp?: boolean }
   | { type: 'form_request'; toolName: string; form: FormSpec; prefill?: Record<string, unknown>; text?: string; messages: ChatMessage[] }
   | { type: 'table'; toolName: string; display: Extract<DisplaySpec, { type: 'table' }>; rows: unknown[]; text?: string; messages: ChatMessage[] }
   | { type: 'chart'; toolName: string; display: Extract<DisplaySpec, { type: 'chart' }>; rows: unknown[]; text?: string; messages: ChatMessage[] }

@@ -54,7 +54,10 @@ export type DisplaySpec =
 // rather than the bare union) so a component keyed on response.type (e.g. `<DynamicTable
 // display={pendingRich.display} .../>`) type-checks without an extra runtime narrowing check.
 export type DbChatResponsePayload =
-  | { type: 'text'; text: string; messages: DbChatMessage[] }
+  // `postWriteFollowUp` mirrors db-agent-service's schemas.ts — set only when this text came from
+  // a post-write hook's follow-up narration, the signal /api/submit-form uses to decide whether
+  // to persist this reply to the chat session.
+  | { type: 'text'; text: string; messages: DbChatMessage[]; postWriteFollowUp?: boolean }
   | { type: 'form_request'; toolName: string; form: FormSpec; prefill?: Record<string, unknown>; text?: string; messages: DbChatMessage[] }
   | {
       type: 'table';
@@ -88,4 +91,9 @@ export interface SubmitFormRequestPayload {
   toolName: string;
   args: Record<string, unknown>;
   messages: DbChatMessage[];
+  // The chat session this form was issued from, if any (a standalone screen with no conversation
+  // context has none). Used only by /api/submit-form, to persist a post-write hook's follow-up
+  // reply into that session's history — never forwarded to db-agent-service itself, which holds
+  // no session concept at all.
+  sessionId?: string;
 }

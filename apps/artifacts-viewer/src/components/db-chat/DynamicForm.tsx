@@ -20,6 +20,10 @@ interface DynamicFormProps {
   prefill?: Record<string, unknown>;
   messages: DbChatMessage[];
   token: string;
+  // The chat session this form was issued from, if any — forwarded to /api/submit-form so a
+  // post-write hook's follow-up reply can be persisted into it. Undefined for a form shown with
+  // no active conversation.
+  sessionId?: string;
   onDone: (messages: DbChatMessage[]) => void;
   // Called when a submission is rejected by the tool itself (the form stays open) — keeps the
   // transcript in sync without closing the form the way onDone does.
@@ -330,7 +334,7 @@ function LineItemsInput({
 /** The generic write form — built entirely from FormSpec, not a per-tool template. Inline in the
  *  chat thread (no modal), two-step (edit -> review -> confirm): filling the form and confirming
  *  IS the write confirmation now — there's no separate "type yes" step after this. */
-export function DynamicForm({ toolName, form, prefill, messages, token, onDone, onMessagesUpdate, onCancel }: DynamicFormProps) {
+export function DynamicForm({ toolName, form, prefill, messages, token, sessionId, onDone, onMessagesUpdate, onCancel }: DynamicFormProps) {
   const [values, setValues] = useState<Record<string, unknown>>(() => initialValues(form, prefill));
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState(false);
@@ -358,7 +362,7 @@ export function DynamicForm({ toolName, form, prefill, messages, token, onDone, 
           args[field.name] = (args[field.name] as Record<string, unknown>[]).map(stripRowLabels);
         }
       }
-      const response = await submitDbChatForm({ toolName, args, messages }, token);
+      const response = await submitDbChatForm({ toolName, args, messages, sessionId }, token);
       if (response.type === 'form_request') {
         // Rejected by the tool itself (e.g. a near-duplicate name) — not a transport error, so
         // this isn't the catch block below. Reopen for correction instead of closing: keep

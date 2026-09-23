@@ -118,6 +118,7 @@ export function WorkspaceShell() {
               error={error}
               pendingRich={pendingRich}
               token={token}
+              sessionId={sessionId ?? undefined}
               artifactTitles={artifactTitles}
               selectedSkills={selectedSkills}
               onSelectedSkillsChange={setSelectedSkills}
@@ -149,6 +150,7 @@ export function WorkspaceShell() {
                 error={error}
                 pendingRich={pendingRich}
                 token={token}
+                sessionId={sessionId ?? undefined}
                 artifactTitles={artifactTitles}
                 selectedSkills={selectedSkills}
                 onSelectedSkillsChange={setSelectedSkills}

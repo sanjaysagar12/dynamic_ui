@@ -34,12 +34,15 @@ export async function chatWithDbAgent(messages: DbChatMessage[], jwt: string): P
 }
 
 /** Commits a write built from a form the user filled in and confirmed — see
- *  db-agent-service's POST /agent/submit-form. Same JWT-forwarding pattern as chatWithDbAgent. */
+ *  db-agent-service's POST /agent/submit-form. Same JWT-forwarding pattern as chatWithDbAgent.
+ *  `sessionId` is this app's own concept (db-agent-service holds no session state at all) — used
+ *  only by the /api/submit-form route itself, never forwarded past this BFF. */
 export async function submitFormWithDbAgent(payload: SubmitFormRequestPayload, jwt: string): Promise<DbChatResponsePayload> {
+  const { toolName, args, messages } = payload;
   const response = await fetch(new URL('/agent/submit-form', getDbAgentServiceUrl()), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...payload, jwt }),
+    body: JSON.stringify({ toolName, args, messages, jwt }),
     cache: 'no-store',
     signal: AbortSignal.timeout(60_000),
   });

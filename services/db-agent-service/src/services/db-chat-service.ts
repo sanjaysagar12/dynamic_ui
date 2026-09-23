@@ -4,6 +4,7 @@ import { DbAgentGenerationError, ToolServiceAuthError, ToolServiceError } from '
 import type { ChatDbRequest, ChatDbResponse, ChatMessage, SubmitFormRequest } from '../schemas.js';
 import { TOOL_RESULT_GUIDANCE } from './tool-guidance.js';
 import { BUSINESS_SYSTEM_PROMPT } from './business-prompt.js';
+import { POST_WRITE_HOOKS, type PostWriteHook } from './post-write-hooks.js';
 import type { ToolCatalogEntry, ToolResult, ToolServiceClient } from './tool-service-client.js';
 
 /** Builds the Anthropic-facing input schema for one tool — tool-service's own args schema,
@@ -91,7 +92,7 @@ export class DbChatService {
     try {
       const result = await this.toolService.executeTool(request.jwt, entry.name, request.args, true);
       if (result.ok) {
-        return this.textResponse(`✓ ${describeSuccess(entry, result.data)}`, request.messages);
+        return this.afterSuccessfulWrite(entry, request, result.data);
       }
       // A handler-level rejection (e.g. DUPLICATE_MATERIAL_SUSPECTED, which carries a suggested
       // existing row in `data.suggestion`) is a legitimate outcome the user needs to see and act
@@ -108,8 +109,82 @@ export class DbChatService {
     }
   }
 
-  private textResponse(text: string, priorMessages: ChatMessage[]): ChatDbResponse {
-    return { type: 'text', text, messages: [...priorMessages, { role: 'assistant', content: text }] };
+  /** No hook registered for this tool -> unchanged behavior, the plain "✓ ..." line, no extra
+   *  model call. A hook registered -> gather its read-only follow-up results and have one small,
+   *  tool-less model call turn them into a natural reply instead. Any follow-up-side failure
+   *  (a follow-up tool erroring, or one no longer resolving to a read-only entry in a freshly
+   *  fetched catalog) falls back to the plain success line rather than surfacing a broken or
+   *  partially-written response — the underlying write already succeeded either way. */
+  private async afterSuccessfulWrite(entry: ToolCatalogEntry, request: SubmitFormRequest, data: unknown): Promise<ChatDbResponse> {
+    const successLine = `✓ ${describeSuccess(entry, data)}`;
+    const hook = POST_WRITE_HOOKS[entry.name];
+    if (!hook) {
+      return this.textResponse(successLine, request.messages);
+    }
+
+    const catalog = await this.toolService.fetchToolCatalog();
+    const catalogByName = new Map(catalog.map((e) => [e.name, e]));
+    const followUps: { tool: string; result: ToolResult }[] = [];
+
+    for (const step of hook.followUpTools) {
+      const followEntry = catalogByName.get(step.tool);
+      if (!followEntry || followEntry.mutates) {
+        // Guarded at startup by validatePostWriteHooks — this only fires if the tool catalog
+        // itself changed shape since then. Degrade to the plain success line rather than acting
+        // on a follow-up tool whose current safety we can no longer vouch for.
+        return this.textResponse(successLine, request.messages);
+      }
+      try {
+        const args = step.buildArgs(request.args, data);
+        const followResult = await this.toolService.executeTool(request.jwt, step.tool, args, undefined);
+        followUps.push({ tool: step.tool, result: followResult });
+      } catch (err) {
+        if (err instanceof ToolServiceAuthError) throw err;
+        return this.textResponse(successLine, request.messages);
+      }
+    }
+
+    const narrated = await this.narrateFollowUp(hook, entry, data, followUps);
+    return this.textResponse(narrated || successLine, request.messages, true);
+  }
+
+  /** One small, focused model call: the write's result plus every follow-up tool's result, framed
+   *  by the hook's own instruction. No `tools` are passed — this call is structurally incapable of
+   *  requesting another tool call, since the follow-up data is already gathered and this step only
+   *  writes prose from it. */
+  private async narrateFollowUp(
+    hook: PostWriteHook,
+    entry: ToolCatalogEntry,
+    writeData: unknown,
+    followUps: { tool: string; result: ToolResult }[],
+  ): Promise<string> {
+    const payload = {
+      write: { tool: entry.name, result: writeData },
+      followUps: followUps.map((f) => ({ tool: f.tool, result: f.result })),
+    };
+    const system =
+      `${hook.followUpInstruction}\n\n` +
+      'Reply with only that short confirmation, in plain prose — no JSON, no tool calls, no markdown.';
+    const response = await this.callAnthropic(
+      this.config.defaultModel,
+      [{ role: 'user', content: JSON.stringify(payload) }],
+      undefined,
+      system,
+    );
+    return response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+  }
+
+  private textResponse(text: string, priorMessages: ChatMessage[], postWriteFollowUp = false): ChatDbResponse {
+    return {
+      type: 'text',
+      text,
+      messages: [...priorMessages, { role: 'assistant', content: text }],
+      ...(postWriteFollowUp ? { postWriteFollowUp: true } : {}),
+    };
   }
 
   private reopenForm(entry: ToolCatalogEntry, request: SubmitFormRequest, text: string): ChatDbResponse {

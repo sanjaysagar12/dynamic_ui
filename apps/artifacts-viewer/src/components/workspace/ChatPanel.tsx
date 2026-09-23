@@ -21,6 +21,9 @@ export interface ChatPanelProps {
   error: string | null;
   pendingRich: PendingRich | null;
   token: string;
+  // The active chat session, if any — forwarded to DynamicForm so a post-write hook's follow-up
+  // reply can be persisted into it (see /api/submit-form).
+  sessionId?: string;
   artifactTitles: Record<string, string>;
   selectedSkills: string[];
   onSelectedSkillsChange: (names: string[]) => void;
@@ -52,6 +55,7 @@ export function ChatPanel({
   error,
   pendingRich,
   token,
+  sessionId,
   artifactTitles,
   selectedSkills,
   onSelectedSkillsChange,
@@ -115,6 +119,7 @@ export function ChatPanel({
               prefill={pendingRich.prefill}
               messages={messages}
               token={token}
+              sessionId={sessionId}
               onDone={(next) => onFormDone(toDisplayMessages(next))}
               onMessagesUpdate={(next) => onFormMessagesUpdate(toDisplayMessages(next))}
               onCancel={onFormCancel}

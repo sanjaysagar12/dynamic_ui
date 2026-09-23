@@ -27,6 +27,7 @@ export interface AssistantPageProps {
   error: string | null;
   pendingRich: PendingRich | null;
   token: string;
+  sessionId?: string;
   artifactTitles: Record<string, string>;
   selectedSkills: string[];
   onSelectedSkillsChange: (names: string[]) => void;

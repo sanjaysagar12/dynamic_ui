@@ -26,6 +26,7 @@
     "schema": "prisma/schema.prisma"
   },
   "dependencies": {
+    "@google/genai": "^2.24.0",
     "@hookform/resolvers": "^5.9.1",
     "@org/shared-types": "*",
     "@prisma/client": "6.19.3",

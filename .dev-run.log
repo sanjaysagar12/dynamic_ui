@@ -1,0 +1,900 @@
+
+> @org/source@0.0.0 dev
+> concurrently -n artifacts,artifact-agent,db-agent,tool,viewer -c green,yellow,magenta,red,cyan "nx run artifacts-server:serve" "nx run artifact-agent-service:serve" "nx run db-agent-service:serve" "nx run tool-service:serve" "nx run artifacts-viewer:dev"
+
+[db-agent] 
+[db-agent] [7m[1m[33m NX [39m[22m[27m  [33mNx Daemon was not able to compute the project graph.[39m
+[db-agent] 
+[db-agent] Log file with the error: c:\dynamic_ui\.nx\workspace-data\d\daemon-error.log
+[db-agent] Please file an issue at https://github.com/nrwl/nx
+[db-agent] Nx Daemon is going to be disabled until you run "nx reset".
+[db-agent] 
+[artifacts] 
+[artifacts] [7m[1m[33m NX [39m[22m[27m  [33mNx Daemon was not able to compute the project graph.[39m
+[artifacts] 
+[artifacts] Log file with the error: c:\dynamic_ui\.nx\workspace-data\d\daemon-error.log
+[artifacts] Please file an issue at https://github.com/nrwl/nx
+[artifacts] Nx Daemon is going to be disabled until you run "nx reset".
+[artifacts] 
+[viewer] 
+[viewer] [7m[1m[33m NX [39m[22m[27m  [33mNx Daemon was not able to compute the project graph.[39m
+[viewer] 
+[viewer] Log file with the error: c:\dynamic_ui\.nx\workspace-data\d\daemon-error.log
+[viewer] Please file an issue at https://github.com/nrwl/nx
+[viewer] Nx Daemon is going to be disabled until you run "nx reset".
+[viewer] 
+[tool] 
+[tool] [7m[1m[36m NX [39m[22m[27m  [36mRunning target [1mserve[22m for project tool-service and [1m2[22m tasks it depends on:[39m
+[tool] 
+[tool] [2m[36m[39m[22m
+[artifact-agent] 
+[artifact-agent] [7m[1m[36m NX [39m[22m[27m  [36mRunning target [1mserve[22m for project artifact-agent-service and [1m2[22m tasks it depends on:[39m
+[artifact-agent] 
+[artifact-agent] [2m[36m[39m[22m
+[tool] 
+[tool] [2m> [22m[2mnx run[22m shared-types:build
+[tool] 
+[tool] [2m> [22mtsc --build tsconfig.lib.json
+[tool] 
+[artifact-agent] 
+[artifact-agent] [2m> [22m[2mnx run[22m shared-types:build
+[artifact-agent] 
+[artifact-agent] [2m> [22mtsc --build tsconfig.lib.json
+[artifact-agent] 
+[tool] 
+[tool] [2m> [22m[2mnx run[22m tool-service:build
+[tool] 
+[tool] [2m> [22mwebpack-cli build
+[tool] 
+[artifact-agent] 
+[artifact-agent] [2m> [22m[2mnx run[22m artifact-agent-service:build
+[artifact-agent] 
+[artifact-agent] [2m> [22mwebpack-cli build
+[artifact-agent] 
+[artifact-agent] webpack compiled [1m[32msuccessfully[39m[22m (8fb75bc308e94de5)
+[artifact-agent] 
+[artifact-agent] [2m> [22m[2mnx run[22m artifact-agent-service:serve:development
+[artifact-agent] 
+[tool] webpack compiled [1m[32msuccessfully[39m[22m (de1cc76d6850c706)
+[tool] 
+[tool] [2m> [22m[2mnx run[22m tool-service:serve:development
+[tool] 
+[artifact-agent] [1m[33mNX Daemon is not running. Node process will not restart automatically after file changes.[39m[22m
+[tool] [1m[33mNX Daemon is not running. Node process will not restart automatically after file changes.[39m[22m
+[db-agent] 
+[db-agent] [7m[1m[36m NX [39m[22m[27m  [36mRunning target [1mserve[22m for project db-agent-service and [1m1[22m task it depends on:[39m
+[db-agent] 
+[db-agent] [2m[36m[39m[22m
+[artifacts] 
+[artifacts] [7m[1m[36m NX [39m[22m[27m  [36mRunning target [1mserve[22m for project artifacts-server and [1m2[22m tasks it depends on:[39m
+[artifacts] 
+[artifacts] [2m[36m[39m[22m
+[db-agent] 
+[db-agent] [2m> [22m[2mnx run[22m db-agent-service:build
+[db-agent] 
+[db-agent] [2m> [22mwebpack-cli build
+[db-agent] 
+[viewer] 
+[viewer] [2m> [22m[2mnx run[22m artifacts-viewer:dev
+[viewer] 
+[viewer] [2m> [22mnext dev -p 4200
+[viewer] 
+[artifacts] 
+[artifacts] [2m> [22m[2mnx run[22m shared-types:build  [2m[local cache][22m
+[artifacts] 
+[artifacts] 
+[artifacts] [2m> [22m[2mnx run[22m artifacts-server:build
+[artifacts] 
+[artifacts] [2m> [22mwebpack-cli build
+[artifacts] 
+[viewer] [1m[38;2;173;127;168m▲ Next.js 16.1.7[39m[22m (Turbopack)
+[viewer] - Local:         http://localhost:4200
+[viewer] - Network:       http://192.168.56.1:4200
+[viewer] - Environments: .env
+[viewer] 
+[viewer] [32m[1m✓[22m[39m Starting...
+[viewer] [32m[1m✓[22m[39m Ready in 2.9s
+[db-agent] webpack compiled [1m[32msuccessfully[39m[22m (944dd08fd3c0e8df)
+[db-agent] 
+[db-agent] [2m> [22m[2mnx run[22m db-agent-service:serve:development
+[db-agent] 
+[artifacts] webpack compiled [1m[32msuccessfully[39m[22m (3a0d1ce4e5657b4a)
+[artifacts] 
+[artifacts] [2m> [22m[2mnx run[22m artifacts-server:serve:development
+[artifacts] 
+[db-agent] [1m[33mNX Daemon is not running. Node process will not restart automatically after file changes.[39m[22m
+[artifacts] [1m[33mNX Daemon is not running. Node process will not restart automatically after file changes.[39m[22m
+[artifact-agent] [7m[1m[36m NX [39m[22m[27m  [36mRunning target [1mbuild[22m for project artifact-agent-service and [1m1[22m task it depends on:[39m
+[artifact-agent] [2m[36m[39m[22m
+[tool] [7m[1m[36m NX [39m[22m[27m  [36mRunning target [1mbuild[22m for project tool-service and [1m1[22m task it depends on:[39m
+[tool] [2m[36m[39m[22m
+[artifact-agent] [2m> [22m[2mnx run[22m shared-types:build  [2m[local cache][22m
+[artifact-agent] [2m> [22m[2mnx run[22m artifact-agent-service:build  [2m[local cache][22m
+[artifact-agent] [2m> [22mwebpack-cli build
+[artifact-agent] webpack compiled [1m[32msuccessfully[39m[22m (8fb75bc308e94de5)
+[artifact-agent] [2m[32m[39m[22m
+[artifact-agent] [7m[1m[32m NX [39m[22m[27m  [32mSuccessfully ran target [1mbuild[22m for project artifact-agent-service and [1m1[22m task it depends on[39m
+[artifact-agent] [2mNx read the output from the cache instead of running the command for 2 out of 2 tasks.[22m
+[artifact-agent]   Run duration:      108ms
+[artifact-agent]   Cache:             2/2 hit (100%)
+[artifact-agent]   Critical path:     39ms (2 tasks)
+[artifact-agent]   Recoverable time:  <1ms
+[tool] [2m> [22m[2mnx run[22m shared-types:build  [2m[local cache][22m
+[tool] [2m> [22m[2mnx run[22m tool-service:build  [2m[local cache][22m
+[tool] [2m> [22mwebpack-cli build
+[tool] webpack compiled [1m[32msuccessfully[39m[22m (de1cc76d6850c706)
+[tool] [2m[32m[39m[22m
+[tool] [7m[1m[32m NX [39m[22m[27m  [32mSuccessfully ran target [1mbuild[22m for project tool-service and [1m1[22m task it depends on[39m
+[tool] [2mNx read the output from the cache instead of running the command for 2 out of 2 tasks.[22m
+[tool]   Run duration:      113ms
+[tool]   Cache:             2/2 hit (100%)
+[tool]   Critical path:     37ms (2 tasks)
+[tool]   Recoverable time:  <1ms
+[artifact-agent] [1m[31mDebugger listening on ws://localhost:9229/cbd71cbb-9155-4f9b-be4e-e305a17a4fc2
+[artifact-agent] Debugger listening on ws://localhost:9229/cbd71cbb-9155-4f9b-be4e-e305a17a4fc2
+[artifact-agent] For help, see: https://nodejs.org/en/docs/inspector
+[artifact-agent] [39m[22m
+[tool] [1m[31mStarting inspector on localhost:9229 failed: address already in use
+[tool] [39m[22m
+[artifact-agent] artifact-agent-service listening at http://localhost:5102
+[tool] tool-service listening at http://localhost:5104
+[artifacts] [7m[1m[36m NX [39m[22m[27m  [36mRunning target [1mbuild[22m for project artifacts-server and [1m1[22m task it depends on:[39m
+[artifacts] [2m[36m[39m[22m
+[artifacts] [2m> [22m[2mnx run[22m shared-types:build  [2m[local cache][22m
+[db-agent] [2m> [22m[2mnx run[22m db-agent-service:build  [2m[local cache][22m
+[db-agent] [2m> [22mwebpack-cli build
+[db-agent] webpack compiled [1m[32msuccessfully[39m[22m (944dd08fd3c0e8df)
+[artifacts] [2m> [22m[2mnx run[22m artifacts-server:build  [2m[local cache][22m
+[artifacts] [2m> [22mwebpack-cli build
+[artifacts] webpack compiled [1m[32msuccessfully[39m[22m (3a0d1ce4e5657b4a)
+[artifacts] [2m[32m[39m[22m
+[artifacts] [7m[1m[32m NX [39m[22m[27m  [32mSuccessfully ran target [1mbuild[22m for project artifacts-server and [1m1[22m task it depends on[39m
+[db-agent] [2m[32m[39m[22m
+[db-agent] [7m[1m[32m NX [39m[22m[27m  [32mSuccessfully ran target [1mbuild[22m for project db-agent-service[39m
+[artifacts] [2mNx read the output from the cache instead of running the command for 2 out of 2 tasks.[22m
+[db-agent] [2mNx read the output from the cache instead of running the command for 1 out of 1 tasks.[22m
+[artifacts]   Run duration:      120ms
+[artifacts]   Cache:             2/2 hit (100%)
+[artifacts]   Critical path:     42ms (2 tasks)
+[artifacts]   Recoverable time:  <1ms
+[db-agent]   Run duration:      83ms
+[db-agent]   Cache:             1/1 hit (100%)
+[db-agent]   Critical path:     12ms (1 task)
+[db-agent]   Recoverable time:  <1ms
+[artifacts] [1m[31mStarting inspector on localhost:9229 failed: address already in use
+[artifacts] [39m[22m
+[db-agent] [1m[31mStarting inspector on localhost:9229 failed: address already in use
+[db-agent] [39m[22m
+[artifacts] artifacts-server listening at http://localhost:3400
+[artifacts] Serving artifacts from c:\dynamic_ui\services\artifacts-server\artifacts
+[db-agent] db-agent-service listening at http://localhost:5103
+[viewer] [37m[1m○[22m[39m Compiling /login ...
+[viewer] [32m[1m✓[22m[39m Finished writing to filesystem cache in 14.4s
+[viewer] memory allocation of 69648 bytes failed
+[viewer] note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[viewer] memory allocation of 49152 bytes failed
+[viewer] note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [79248:000002B48C899000]       87 ms: Scavenge 6.4 (8.6) -> 5.5 (8.1) MB, pooled: 0 MB, 1.04 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B899BCB 
+[viewer]  5: 00007FF60B88A13E 
+[viewer]  6: 00007FF60B87F3B5 
+[viewer]  7: 00007FF60B890160 
+[viewer]  8: 00007FF60B88F484 
+[viewer]  9: 00007FF60B88F0F9 
+[viewer] 10: 00007FF60B8978C0 
+[viewer] 11: 00007FF60B88EB66 
+[viewer] 12: 00007FF60B89026B 
+[viewer] 13: 00007FF60B88F43E 
+[viewer] 14: 00007FF60B8A1312 
+[viewer] 15: 00007FF60B880DE5 
+[viewer] 16: 00007FF60B8899EB 
+[viewer] 17: 00007FF60B888EEA 
+[viewer] 18: 00007FF60B87C5E7 
+[viewer] 19: 00007FF60B87B7B4 
+[viewer] 20: 00007FF60B87AAA2 
+[viewer] 21: 00007FF60B87A74A 
+[viewer] 22: 00007FF60B875D79 
+[viewer] 23: 00007FF60BD50C7F 
+[viewer] 24: 00007FF60BD53A81 
+[viewer] 25: 00007FF60BDDC793 
+[viewer] 26: 00007FF60B1A7733 
+[viewer] 27: 00007FF60B1A5ECD 
+[viewer] 28: 000002B4C4F8F64D 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [77040:000001DEC483E000]       57 ms: Scavenge 6.4 (8.6) -> 5.5 (10.1) MB, pooled: 0 MB, 0.84 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [77040:000001DEC483E000]      107 ms: Scavenge 8.8 (11.7) -> 7.9 (12.2) MB, pooled: 0 MB, 1.24 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [77040:000001DEC483E000]      171 ms: Scavenge 9.8 (13.0) -> 9.1 (17.5) MB, pooled: 0 MB, 1.14 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B3119B4 
+[viewer]  5: 00007FF60C9A2E63 
+[viewer]  6: 00007FF60C9A2BCF 
+[viewer]  7: 00007FF60C7AF5C6 
+[viewer]  8: 00007FF60C7A7E36 
+[viewer]  9: 00007FF60C7A72B0 
+[viewer] 10: 00007FF60BD46F0F 
+[viewer] 11: 00007FF60BD0BF9D 
+[viewer] 12: 00007FF60BD0BC95 
+[viewer] 13: 00007FF60C5A593F 
+[viewer] 14: 00007FF60B0DADCE 
+[viewer] 15: 00007FF60BE28646 
+[viewer] 16: 00007FF60D069FB3 
+[viewer] 17: 00007FFC7DC9CD87 BaseThreadInitThunk+23
+[viewer] 18: 00007FFC7EB2CAEC 
+[viewer] memory allocation of 69648 bytes failed
+[viewer] note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [80180:0000021A9ED3D000]       67 ms: Scavenge 6.4 (8.6) -> 5.5 (10.1) MB, pooled: 0 MB, 1.04 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [80180:0000021A9ED3D000]      121 ms: Scavenge 8.8 (11.7) -> 7.9 (12.2) MB, pooled: 0 MB, 1.00 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [80180:0000021A9ED3D000]      174 ms: Scavenge 9.8 (12.7) -> 9.1 (17.7) MB, pooled: 0 MB, 5.23 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60C753EA0 
+[viewer]  5: 00007FF60C57D179 
+[viewer]  6: 00007FF60B646226 
+[viewer]  7: 00007FF60B623B1F 
+[viewer]  8: 00007FF60BD4F583 
+[viewer]  9: 00007FF60BD5165A 
+[viewer] 10: 00007FF60B7D4711 
+[viewer] 11: 00007FF60B7D280F 
+[viewer] 12: 0000021AD8A7733A 
+[viewer] 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] 
+[viewer] [24332:00000238541D9000]      125 ms: Scavenge 9.8 (13.2) -> 9.1 (17.5) MB, pooled: 0 MB, 1.01 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [86348:000002AADEAA0000]      155 ms: Scavenge 9.8 (13.0) -> 9.1 (18.0) MB, pooled: 0 MB, 0.96 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [24332:00000238541D9000]      204 ms: Scavenge 12.6 (18.2) -> 10.9 (19.0) MB, pooled: 0 MB, 0.85 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [86348:000002AADEAA0000]      246 ms: Scavenge 12.6 (18.2) -> 10.8 (19.2) MB, pooled: 0 MB, 1.31 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [24332:00000238541D9000]      251 ms: Scavenge 14.5 (19.7) -> 13.0 (29.0) MB, pooled: 0 MB, 2.00 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [86348:000002AADEAA0000]      294 ms: Scavenge 14.5 (19.5) -> 13.0 (29.0) MB, pooled: 0 MB, 2.29 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [86348:000002AADEAA0000]      155 ms: Scavenge 9.8 (13.0) -> 9.1 (18.0) MB, pooled: 0 MB, 0.96 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [86348:000002AADEAA0000]      246 ms: Scavenge 12.6 (18.2) -> 10.8 (19.2) MB, pooled: 0 MB, 1.31 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [86348:000002AADEAA0000]      294 ms: Scavenge 14.5 (19.5) -> 13.0 (29.0) MB, pooled: 0 MB, 2.29 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] [24332:00000238541D9000]      125 ms: Scavenge 9.8 (13.2) -> 9.1 (17.5) MB, pooled: 0 MB, 1.01 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [24332:00000238541D9000]      204 ms: Scavenge 12.6 (18.2) -> 10.9 (19.0) MB, pooled: 0 MB, 0.85 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] 
+[viewer] [24332:00000238541D9000]      251 ms: Scavenge 14.5 (19.7) -> 13.0 (29.0) MB, pooled: 0 MB, 2.00 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer] 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer]  3: 00007FF60B74E076 
+[viewer] ----- Native stack trace -----
+[viewer]  1: 00007FF60B18AD5F 
+[viewer] 
+[viewer]  4: 00007FF60B577901 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B30F0A2 
+[viewer]  5: 00007FF60C9B1507 
+[viewer]  6: 00007FF60C9B0BE8 
+[viewer]  7: 00007FF60C9A87FF 
+[viewer]  8: 00007FF60C9A82DF 
+[viewer]  9: 00007FF60C9A433E 
+[viewer] 10: 00007FF60C9A3E29 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer] 11: 00007FF60C9AE619 
+[viewer]  5: 00007FF60B5778DB 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer] 12: 00007FF60C9AD2E2 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  6: 00007FF60B5777C3 
+[viewer]  4: 00007FF60CD59AF7 
+[viewer] 13: 00007FF60C9A8667 
+[viewer]  5: 00007FF60CD548C6 
+[viewer]  7: 00007FF60B577F09 
+[viewer]  6: 00007FF60CD54315 
+[viewer] 14: 00007FF60C9A77F1 
+[viewer]  7: 00007FF60CD63360 
+[viewer]  8: 00007FF60B572454 
+[viewer]  8: 00007FF60CC2376D 
+[viewer] 15: 00007FF60C9A433E 
+[viewer]  9: 00007FF60C7CE264 
+[viewer]  9: 00007FF60B57B863 
+[viewer] 10: 00007FF60C7B1574 
+[viewer] 16: 00007FF60C9A3E29 
+[viewer] 11: 00007FF60C7A7F2B 
+[viewer] 10: 00007FF60B5B4B13 
+[viewer] 12: 00007FF60C7A7303 
+[viewer] 17: 00007FF60C9A38E4 
+[viewer] 13: 00007FF60BD46F0F 
+[viewer] 11: 00007FF60B5B474A 
+[viewer] 14: 00007FF60BD0BF9D 
+[viewer] 18: 00007FF60C9A2E71 
+[viewer] 12: 00007FF60B5C1EDA 
+[viewer] 15: 00007FF60BD0BC95 
+[viewer] 19: 00007FF60C9A2BCF 
+[viewer] 16: 00007FF60C5A593F 
+[viewer] 13: 00007FF60B59852E 
+[viewer] 17: 00007FF60B0DADCE 
+[viewer] 20: 00007FF60C7AF5C6 
+[viewer] 18: 00007FF60BE28646 
+[viewer] 19: 00007FF60D069FB3 
+[viewer] 14: 00007FF60B5B3D12 
+[viewer] 20: 00007FFC7DC9CD87 
+[viewer] 15: 00007FF60B5C53D6 
+[viewer] 21: 00007FFC7EB2CAEC 
+[viewer] 21: 00007FF60C7A7E36 
+[viewer] 16: 00007FF60B5C61D7 
+[viewer] 22: 00007FF60C7A72B0 
+[viewer] 17: 00007FF60B5DA5AA 
+[viewer] 23: 00007FF60BD46F0F 
+[viewer] 18: 00007FF60B5AF1EB 
+[viewer] 24: 00007FF60BD0BF9D 
+[viewer] 19: 00007FF60B627356 
+[viewer] 25: 00007FF60BD0BC95 
+[viewer] 20: 00007FF60B626070 
+[viewer] 26: 00007FF60C5A593F 
+[viewer] 21: 00007FF60B623E6A 
+[viewer] 27: 00007FF60B0DADCE 
+[viewer] 22: 00007FF60BD46F0F 
+[viewer] 28: 00007FF60BE28646 
+[viewer] 23: 00007FF60B62594B 
+[viewer] 29: 00007FF60D069FB3 
+[viewer] 24: 00007FF60C5A593F 
+[viewer] 30: 00007FFC7DC9CD87 
+[viewer] 25: 00007FF60B0DADCE 
+[viewer] 31: 00007FFC7EB2CAEC 
+[viewer] 26: 00007FF60BE28646 
+[viewer] 27: 00007FF60D069FB3 
+[viewer] 28: 00007FFC7DC9CD87 
+[viewer] 29: 00007FFC7EB2CAEC 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [89420:0000028483276000]      510 ms: Mark-Compact 18.0 (34.5) -> 15.0 (33.5) MB, pooled: 0 MB, 2.62 / 0.16 ms  (+ 1.5 ms in 32 steps since start of marking, biggest step 0.2 ms, walltime since start of marking 11 ms) (average mu = 0.992, current mu = 0.9[89420:0000028483276000]      705 ms: Scavenge (interleaved) 23.3 (33.5) -> 17.2 (33.5) MB, pooled: 0 MB, 1.89 / 0.00 ms  (average mu = 0.992, current mu = 0.992) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B578132 
+[viewer]  5: 00007FF60B578104 
+[viewer]  6: 00007FF60B5780F2 
+[viewer]  7: 00007FF60B577FF3 
+[viewer]  8: 00007FF60B577F3D 
+[viewer]  9: 00007FF60B572454 
+[viewer] 10: 00007FF60B5951A4 
+[viewer] 11: 00007FF60B594FB2 
+[viewer] 12: 00007FF60B5FE30A 
+[viewer] 13: 00007FF60B5A026C 
+[viewer] 14: 00007FF60B5A07FF 
+[viewer] 15: 00007FF60B5D952A 
+[viewer] 16: 00007FF60B5AF1EB 
+[viewer] 17: 00007FF60B627356 
+[viewer] 18: 00007FF60B626070 
+[viewer] 19: 00007FF60B623E6A 
+[viewer] 20: 00007FF60BD46F0F 
+[viewer] 21: 00007FF60B62594B 
+[viewer] 22: 00007FF60C5A593F 
+[viewer] 23: 00007FF60B0DADCE 
+[viewer] 24: 00007FF60BE28646 
+[viewer] 25: 00007FF60D069FB3 
+[viewer] 26: 00007FFC7DC9CD87 
+[viewer] 27: 00007FFC7EB2CAEC 
+[viewer] 
+[viewer] thread '<unnamed>' (91016) panicked at C:\Users\runneradmin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rayon-core-1.12.1\src\registry.rs:168:10:
+[viewer] The global thread pool has not been initialized.: ThreadPoolBuildError { kind: IOError(Os { code: 1450, kind: Uncategorized, message: "Insufficient system resources exist to complete the requested service." }) }
+[viewer] note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [90960:00000225D7788000]      259 ms: Scavenge 12.6 (17.9) -> 10.9 (19.0) MB, pooled: 0 MB, 0.98 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [90960:00000225D7788000]      318 ms: Scavenge 14.5 (19.5) -> 13.0 (28.7) MB, pooled: 0 MB, 2.30 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [90960:00000225D7788000]      433 ms: Scavenge 20.3 (29.5) -> 14.5 (30.7) MB, pooled: 0 MB, 1.84 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60CC53BEA 
+[viewer]  5: 00007FF60CC65E90 
+[viewer]  6: 00007FF60CC5EAEC 
+[viewer]  7: 00007FF60CC5597C 
+[viewer]  8: 00007FF60CC55796 
+[viewer]  9: 00007FF60CC6826D 
+[viewer] 10: 00007FF60C7CFD48 
+[viewer] 11: 00007FF60C7AA3DD 
+[viewer] 12: 00007FF60C7A7569 
+[viewer] 13: 00007FF60C7A71CE 
+[viewer] 14: 00007FF60BD46F0F 
+[viewer] 15: 00007FF60BD0BF9D 
+[viewer] 16: 00007FF60BD0BC95 
+[viewer] 17: 00007FF60C5A593F 
+[viewer] 18: 00007FF60B0DADCE 
+[viewer] 19: 00007FF60BE28646 
+[viewer] 20: 00007FF60D069FB3 
+[viewer] 21: 00007FFC7DC9CD87 BaseThreadInitThunk+23
+[viewer] 22: 00007FFC7EB2CAEC 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [90124:0000028BD6B78000]      170 ms: Scavenge 9.8 (12.7) -> 9.1 (17.5) MB, pooled: 0 MB, 1.19 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [90124:0000028BD6B78000]      265 ms: Scavenge 12.6 (18.2) -> 10.9 (19.0) MB, pooled: 0 MB, 0.77 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [90124:0000028BD6B78000]      333 ms: Scavenge 14.5 (20.0) -> 13.1 (21.5) MB, pooled: 7 MB, 19.26 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B578132 
+[viewer]  5: 00007FF60B5780F2 
+[viewer]  6: 00007FF60B5780F2 
+[viewer]  7: 00007FF60B5780F2 
+[viewer]  8: 00007FF60B5780F2 
+[viewer]  9: 00007FF60B577FF3 
+[viewer] 10: 00007FF60B577F3D 
+[viewer] 11: 00007FF60B572454 
+[viewer] 12: 00007FF60B57A50E 
+[viewer] 13: 00007FF60B57A283 
+[viewer] 14: 00007FF60B5DD7B4 
+[viewer] 15: 00007FF60B5DD3E7 
+[viewer] 16: 00007FF60B5DC167 
+[viewer] 17: 00007FF60B5D9643 
+[viewer] 18: 00007FF60B5D8673 
+[viewer] 19: 00007FF60B5D845B 
+[viewer] 20: 00007FF60B5AF278 
+[viewer] 21: 00007FF60B627356 
+[viewer] 22: 00007FF60B626070 
+[viewer] 23: 00007FF60B623E6A 
+[viewer] 24: 00007FF60BD46F0F 
+[viewer] 25: 00007FF60B62594B 
+[viewer] 26: 00007FF60C5A593F 
+[viewer] 27: 00007FF60B0DADCE 
+[viewer] 28: 00007FF60BE28646 
+[viewer] 29: 00007FF60D069FB3 
+[viewer] 30: 00007FFC7DC9CD87 
+[viewer] 31: 00007FFC7EB2CAEC 
+[viewer] 
+[viewer] thread '<unnamed>' (95292) panicked at C:\Users\runneradmin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rayon-core-1.12.1\src\registry.rs:168:10:
+[viewer] The global thread pool has not been initialized.: ThreadPoolBuildError { kind: IOError(Os { code: 1450, kind: Uncategorized, message: "Insufficient system resources exist to complete the requested service." }) }
+[viewer] note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [95320:000002191155E000]      321 ms: Scavenge 12.5 (18.2) -> 10.9 (19.0) MB, pooled: 0 MB, 1.06 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [95320:000002191155E000]      398 ms: Scavenge 14.5 (20.0) -> 13.0 (29.2) MB, pooled: 0 MB, 3.07 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [95320:000002191155E000]      654 ms: Scavenge 20.3 (29.5) -> 14.5 (31.0) MB, pooled: 0 MB, 1.87 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F node::OnFatalError+1343
+[viewer]  2: 00007FF60BDD32D7 v8::Function::NewInstance+423
+[viewer]  3: 00007FF60B74E076 v8::SnapshotCreator::GetIsolate+56566
+[viewer]  4: 00007FF60B30C56E v8::internal::compiler::CompilationDependencies::~CompilationDependencies+15134
+[viewer]  5: 00007FF60B30C1C5 v8::internal::compiler::CompilationDependencies::~CompilationDependencies+14197
+[viewer]  6: 00007FF60C5606F0 v8::internal::compiler::CompilationDependencies::RecordDependency+48
+[viewer]  7: 00007FF60C53E7FB v8::base::ieee754::tanh+21691
+[viewer]  8: 00007FF60B5A0116 SSL_CTX_get_client_CA_list+175350
+[viewer]  9: 00007FF60B5A07FF SSL_CTX_get_client_CA_list+177119
+[viewer] 10: 00007FF60B5D952A SSL_CTX_get_client_CA_list+409866
+[viewer] 11: 00007FF60B5AF1EB SSL_CTX_get_client_CA_list+237003
+[viewer] 12: 00007FF60B627356 SSL_CTX_get_client_CA_list+728886
+[viewer] 13: 00007FF60B626070 SSL_CTX_get_client_CA_list+724048
+[viewer] 14: 00007FF60B623E6A SSL_CTX_get_client_CA_list+715338
+[viewer] 15: 00007FF60BD46F0F X509_STORE_set_get_issuer+200559
+[viewer] 16: 00007FF60B62594B SSL_CTX_get_client_CA_list+722219
+[viewer] 17: 00007FF60C5A593F v8::base::SysInfo::AddressSpaceEnd+3167
+[viewer] 18: 00007FF60B0DADCE node::GetNodeReport+89326
+[viewer] 19: 00007FF60BE28646 uv_thread_detach+150
+[viewer] 20: 00007FF60D069FB3 v8::base::UnsignedDivisionByConstant<unsigned __int64>+2903939
+[viewer] 21: 00007FFC7DC9CD87 BaseThreadInitThunk+23
+[viewer] 22: 00007FFC7EB2CAEC RtlUserThreadStart+44
+[viewer] 
+[viewer] 
+[viewer] #
+[viewer] # Fatal error in , line 0
+[viewer] # Out of memory: HashMap::Initialize
+[viewer] #
+[viewer] #
+[viewer] #
+[viewer] #FailureMessage Object: 000000BB391FA640
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B0DEF0D 
+[viewer]  2: 00007FF60C5322FF 
+[viewer]  3: 00007FF60BDD1376 
+[viewer]  4: 00007FF60BDD0A62 
+[viewer]  5: 00007FF60BDD0890 
+[viewer]  6: 00007FF60B858F4F 
+[viewer]  7: 00007FF60B8A10AB 
+[viewer]  8: 00007FF60B880DE5 
+[viewer]  9: 00007FF60B8899EB 
+[viewer] 10: 00007FF60B888EEA 
+[viewer] 11: 00007FF60B87C5E7 
+[viewer] 12: 00007FF60B87B7B4 
+[viewer] 13: 00007FF60B87AAA2 
+[viewer] 14: 00007FF60B87A74A 
+[viewer] 15: 00007FF60B875D79 
+[viewer] 16: 00007FF60BD50C7F 
+[viewer] 17: 00007FF60BD53A81 
+[viewer] 18: 00007FF60BDDC793 
+[viewer] 19: 00007FF60B1A7733 
+[viewer] 20: 00007FF60B1A5ECD 
+[viewer] 21: 000002003988F64D 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [95460:000002384F16A000]      279 ms: Scavenge 12.6 (18.2) -> 10.9 (19.0) MB, pooled: 0 MB, 0.82 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [95460:000002384F16A000]      340 ms: Scavenge 14.5 (19.7) -> 13.0 (21.0) MB, pooled: 4 MB, 6.51 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [95460:000002384F16A000]      443 ms: Scavenge 16.0 (21.2) -> 13.8 (26.7) MB, pooled: 0 MB, 1.48 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Committing semi space failed. Allocation failed - JavaScript heap out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60BBD3997 
+[viewer]  4: 00007FF60BB6C3BB 
+[viewer]  5: 00007FF60BB43E0E 
+[viewer]  6: 00007FF60BBD6432 
+[viewer]  7: 00007FF60BBD53E7 
+[viewer]  8: 00007FF60BBE6352 
+[viewer]  9: 00007FF60BBE5E7B 
+[viewer] 10: 00007FF60D04E7ED 
+[viewer] 11: 00007FF60BBD1460 
+[viewer] 12: 00007FF60BBEBCEA 
+[viewer] 13: 00007FF60BBF8186 
+[viewer] 14: 00007FF60B7CB1E7 
+[viewer] 15: 000002381FE7733A 
+[viewer] 
+[viewer] 
+[viewer] #
+[viewer] # Fatal error in , line 0
+[viewer] # Out of memory: HashMap::Initialize
+[viewer] #
+[viewer] #
+[viewer] #
+[viewer] #FailureMessage Object: 0000003BA53FAFA0
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B0DEF0D 
+[viewer]  2: 00007FF60C5322FF 
+[viewer]  3: 00007FF60BDD1376 
+[viewer]  4: 00007FF60BDD0A62 
+[viewer]  5: 00007FF60BDD0890 
+[viewer]  6: 00007FF60B858F4F 
+[viewer]  7: 00007FF60B879B76 
+[viewer]  8: 00007FF60B89026B 
+[viewer]  9: 00007FF60B88F43E 
+[viewer] 10: 00007FF60B895CA2 
+[viewer] 11: 00007FF60B8926C3 
+[viewer] 12: 00007FF60B8902B8 
+[viewer] 13: 00007FF60B88F43E 
+[viewer] 14: 00007FF60B88F0F9 
+[viewer] 15: 00007FF60B8978C0 
+[viewer] 16: 00007FF60B88EB66 
+[viewer] 17: 00007FF60B89026B 
+[viewer] 18: 00007FF60B88F43E 
+[viewer] 19: 00007FF60B8A1312 
+[viewer] 20: 00007FF60B880DE5 
+[viewer] 21: 00007FF60B8899EB 
+[viewer] 22: 00007FF60B888EEA 
+[viewer] 23: 00007FF60B87C5E7 
+[viewer] 24: 00007FF60B87B7B4 
+[viewer] 25: 00007FF60B87AAA2 
+[viewer] 26: 00007FF60B87A74A 
+[viewer] 27: 00007FF60B875D79 
+[viewer] 28: 00007FF60BD50C7F 
+[viewer] 29: 00007FF60BD53A81 
+[viewer] 30: 00007FF60BDDC793 
+[viewer] 31: 00007FF60B1A7733 
+[viewer] 32: 00007FF60B1A5ECD 
+[viewer] 33: 000001BE27DCF64D 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [58044:000001D6C0AD9000]      236 ms: Scavenge 12.5 (18.2) -> 10.8 (19.0) MB, pooled: 0 MB, 0.82 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [58044:000001D6C0AD9000]      288 ms: Scavenge 14.6 (19.5) -> 13.0 (29.0) MB, pooled: 0 MB, 1.35 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [58044:000001D6C0AD9000]      394 ms: Scavenge 20.4 (29.7) -> 14.5 (31.0) MB, pooled: 0 MB, 1.35 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B577BF6 
+[viewer]  5: 00007FF60B577BC8 
+[viewer]  6: 00007FF60B577BB6 
+[viewer]  7: 00007FF60B5781B3 
+[viewer]  8: 00007FF60B577F61 
+[viewer]  9: 00007FF60B572454 
+[viewer] 10: 00007FF60B57A50E 
+[viewer] 11: 00007FF60B57A283 
+[viewer] 12: 00007FF60B5DD7B4 
+[viewer] 13: 00007FF60B5DD3E7 
+[viewer] 14: 00007FF60B5DC08E 
+[viewer] 15: 00007FF60B5DA3F1 
+[viewer] 16: 00007FF60B5AF1EB 
+[viewer] 17: 00007FF60B627356 
+[viewer] 18: 00007FF60B626070 
+[viewer] 19: 00007FF60B623E6A 
+[viewer] 20: 00007FF60BD46F0F 
+[viewer] 21: 00007FF60B62594B 
+[viewer] 22: 00007FF60C5A593F 
+[viewer] 23: 00007FF60B0DADCE 
+[viewer] 24: 00007FF60BE28646 
+[viewer] 25: 00007FF60D069FB3 
+[viewer] 26: 00007FFC7DC9CD87 
+[viewer] 27: 00007FFC7EB2CAEC 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [97268:00000229A51A8000]       52 ms: Scavenge 6.4 (8.6) -> 5.5 (10.1) MB, pooled: 0 MB, 0.80 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [97268:00000229A51A8000]       96 ms: Scavenge 8.8 (11.7) -> 7.9 (12.2) MB, pooled: 0 MB, 0.73 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60BDBA346 
+[viewer]  5: 00007FF60BDBA747 
+[viewer]  6: 00007FF60B86385D 
+[viewer]  7: 00007FF60B863113 
+[viewer]  8: 00007FF60B86726B 
+[viewer]  9: 00007FF60B866733 
+[viewer] 10: 00007FF60B8661D4 
+[viewer] 11: 00007FF60B8626CB 
+[viewer] 12: 00007FF60B8672DA 
+[viewer] 13: 00007FF60B866733 
+[viewer] 14: 00007FF60B86518A 
+[viewer] 15: 00007FF60B871431 
+[viewer] 16: 00007FF60B860A11 
+[viewer] 17: 00007FF60B85FF7D 
+[viewer] 18: 00007FF60B85E6AB 
+[viewer] 19: 00007FF60B85D9E6 
+[viewer] 20: 00007FF60B888548 
+[viewer] 21: 00007FF60B87C560 
+[viewer] 22: 00007FF60B8A0AE3 
+[viewer] 23: 00007FF60B880F54 
+[viewer] 24: 00007FF60B8899EB 
+[viewer] 25: 00007FF60B888EEA 
+[viewer] 26: 00007FF60B87C5E7 
+[viewer] 27: 00007FF60B87B7B4 
+[viewer] 28: 00007FF60B87AAA2 
+[viewer] 29: 00007FF60B87A74A 
+[viewer] 30: 00007FF60B875D79 
+[viewer] 31: 00007FF60BD50C7F 
+[viewer] 32: 00007FF60BD53A81 
+[viewer] 33: 00007FF60BDDC793 
+[viewer] 34: 00007FF60B1A7733 
+[viewer] 35: 00007FF60B1A5ECD 
+[viewer] 36: 00000229DD74F64D 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [96440:000001BF5DA9A000]       51 ms: Scavenge 6.4 (8.6) -> 5.5 (10.1) MB, pooled: 0 MB, 0.87 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [96440:000001BF5DA9A000]      107 ms: Scavenge 8.8 (11.7) -> 7.9 (12.2) MB, pooled: 0 MB, 0.85 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B8776B8 
+[viewer]  5: 00007FF60B87C739 
+[viewer]  6: 00007FF60B8A0AE3 
+[viewer]  7: 00007FF60B880F54 
+[viewer]  8: 00007FF60B8899EB 
+[viewer]  9: 00007FF60B888EEA 
+[viewer] 10: 00007FF60B87C5E7 
+[viewer] 11: 00007FF60B87B7B4 
+[viewer] 12: 00007FF60B87AAA2 
+[viewer] 13: 00007FF60B87A74A 
+[viewer] 14: 00007FF60B875D79 
+[viewer] 15: 00007FF60BD50C7F 
+[viewer] 16: 00007FF60BD53A81 
+[viewer] 17: 00007FF60BDDC793 
+[viewer] 18: 00007FF60B1A7733 
+[viewer] 19: 00007FF60B1A5ECD 
+[viewer] 20: 000001BF1FDCF64D 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [63904:000001C79527C000]      181 ms: Scavenge 12.5 (17.9) -> 10.9 (19.2) MB, pooled: 0 MB, 0.71 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [63904:000001C79527C000]      246 ms: Scavenge 14.5 (20.2) -> 13.1 (21.2) MB, pooled: 2 MB, 9.93 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [63904:000001C79527C000]      333 ms: Scavenge 16.0 (21.2) -> 13.7 (26.7) MB, pooled: 0 MB, 5.90 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [63904:000001C79527C000]      181 ms: Scavenge 12.5 (17.9) -> 10.9 (19.2) MB, pooled: 0 MB, 0.71 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [63904:000001C79527C000]      246 ms: Scavenge 14.5 (20.2) -> 13.1 (21.2) MB, pooled: 2 MB, 9.93 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [63904:000001C79527C000]      333 ms: Scavenge 16.0 (21.2) -> 13.7 (26.7) MB, pooled: 0 MB, 5.90 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B346511 
+[viewer]  5: 00007FF60B9D7ECF 
+[viewer]  6: 00007FF60BAD2BFD 
+[viewer]  7: 00007FF60BAD2AA3 
+[viewer]  8: 00007FF60BAD35B0 
+[viewer]  9: 00007FF60BAD09DC 
+[viewer] 10: 00007FF60BAC8076 
+[viewer] 11: 00007FF60BAC594B 
+[viewer] 12: 00007FF60BAC5CD0 
+[viewer] 13: 00007FF60BAC946B 
+[viewer] 14: 00007FF60BAC594B 
+[viewer] 15: 00007FF60BAC5CD0 
+[viewer] 16: 00007FF60BAC7863 
+[viewer] 17: 00007FF60BAC4EEB 
+[viewer] 18: 00007FF60BAC435F 
+[viewer] 19: 00007FF60BAC29F3 
+[viewer] 20: 00007FF60BAB9E16 
+[viewer] 21: 00007FF60BD57FCF 
+[viewer] 22: 00007FF60BD4E8E8 
+[viewer] 23: 00007FF60BD4E11D 
+[viewer] 24: 00007FF60BD4EBAC 
+[viewer] 25: 00007FF60B7D225B 
+[viewer] 26: 000001C7CD9B733A 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [96968:000001BD0DD7B000]      176 ms: Scavenge 12.5 (18.2) -> 10.9 (19.0) MB, pooled: 0 MB, 0.89 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [96968:000001BD0DD7B000]      223 ms: Scavenge 14.5 (20.0) -> 13.0 (29.2) MB, pooled: 0 MB, 6.42 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [96968:000001BD0DD7B000]      324 ms: Scavenge 20.3 (29.5) -> 14.5 (30.5) MB, pooled: 0 MB, 2.86 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B30F2A3 
+[viewer]  5: 00007FF60B57B43F 
+[viewer]  6: 00007FF60B5E597F 
+[viewer]  7: 00007FF60B57B738 
+[viewer]  8: 00007FF60B5DAA4D 
+[viewer]  9: 00007FF60B5AF1EB 
+[viewer] 10: 00007FF60B627356 
+[viewer] 11: 00007FF60B626070 
+[viewer] 12: 00007FF60B623E6A 
+[viewer] 13: 00007FF60BD46F0F 
+[viewer] 14: 00007FF60B62594B 
+[viewer] 15: 00007FF60C5A593F 
+[viewer] 16: 00007FF60B0DADCE 
+[viewer] 17: 00007FF60BE28646 
+[viewer] 18: 00007FF60D069FB3 
+[viewer] 19: 00007FFC7DC9CD87 
+[viewer] 20: 00007FFC7EB2CAEC RtlUserThreadStart+44
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [97764:0000015DB737E000]      392 ms: Scavenge 12.6 (18.2) -> 10.9 (19.0) MB, pooled: 0 MB, 1.25 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [97764:0000015DB737E000]      470 ms: Scavenge 14.5 (19.7) -> 13.0 (29.0) MB, pooled: 0 MB, 2.33 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [97764:0000015DB737E000]      646 ms: Scavenge 20.3 (29.5) -> 14.5 (30.7) MB, pooled: 0 MB, 2.19 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer] 
+[viewer] <--- Last few GCs --->
+[viewer] 
+[viewer] [97756:000001C4A3DD0000]      413 ms: Scavenge 12.6 (18.2) -> 10.9 (19.2) MB, pooled: 0 MB, 1.35 / 0.00 ms  (average mu = 1.000, current mu = 1.000) task; 
+[viewer] [97756:000001C4A3DD0000]      493 ms: Scavenge 14.5 (20.2) -> 13.0 (29.5) MB, pooled: 0 MB, 2.78 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] [97756:000001C4A3DD0000]      670 ms: Scavenge 20.3 (29.7) -> 14.5 (30.7) MB, pooled: 0 MB, 1.92 / 0.00 ms  (average mu = 1.000, current mu = 1.000) allocation failure; 
+[viewer] 
+[viewer] FATAL ERROR: Zone Allocation failed - process out of memory
+[viewer] ----- Native stack trace -----
+[viewer] 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B5E64F5 
+[viewer]  5: 00007FF60B598EE7 
+[viewer]  6: 00007FF60B59AA46 
+[viewer]  7: 00007FF60B5A01B9 
+[viewer]  8: 00007FF60B5A07FF 
+[viewer]  9: 00007FF60B5D952A 
+[viewer] 10: 00007FF60B5AF1EB 
+[viewer] 11: 00007FF60B627356 
+[viewer] 12: 00007FF60B626070 
+[viewer] 13: 00007FF60B623E6A 
+[viewer] 14: 00007FF60BD46F0F 
+[viewer] 15: 00007FF60B62594B 
+[viewer] 16: 00007FF60C5A593F 
+[viewer] 17: 00007FF60B0DADCE 
+[viewer] 18: 00007FF60BE28646 
+[viewer] 19: 00007FF60D069FB3 
+[viewer] 20: 00007FFC7DC9CD87 
+[viewer] 21: 00007FFC7EB2CAEC 
+[viewer]  1: 00007FF60B18AD5F 
+[viewer]  2: 00007FF60BDD32D7 
+[viewer]  3: 00007FF60B74E076 
+[viewer]  4: 00007FF60B578132 
+[viewer]  5: 00007FF60B578104 
+[viewer]  6: 00007FF60B577FF3 
+[viewer]  7: 00007FF60B577F3D 
+[viewer]  8: 00007FF60B572454 
+[viewer]  9: 00007FF60B57A50E 
+[viewer] 10: 00007FF60B57A283 
+[viewer] 11: 00007FF60B5DD7B4 
+[viewer] 12: 00007FF60B5DD3E7 
+[viewer] 13: 00007FF60B5DC167 
+[viewer] 14: 00007FF60B5D9643 
+[viewer] 15: 00007FF60B5AF1EB 
+[viewer] 16: 00007FF60B627356 
+[viewer] 17: 00007FF60B626070 
+[viewer] 18: 00007FF60B623E6A 
+[viewer] 19: 00007FF60BD46F0F 
+[viewer] 20: 00007FF60B62594B 
+[viewer] 21: 00007FF60C5A593F 
+[viewer] 22: 00007FF60B0DADCE 
+[viewer] 23: 00007FF60BE28646 
+[viewer] 24: 00007FF60D069FB3 
+[viewer] 25: 00007FFC7DC9CD87 
+[viewer] 26: 00007FFC7EB2CAEC RtlUserThreadStart+44
+[viewer] 
+[viewer] thread '<unnamed>' (98264) panicked at C:\Users\runneradmin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rayon-core-1.12.1\src\registry.rs:168:10:
+[viewer] The global thread pool has not been initialized.: ThreadPoolBuildError { kind: IOError(Os { code: 1450, kind: Uncategorized, message: "Insufficient system resources exist to complete the requested service." }) }
+[viewer] note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[viewer] 
+[viewer] -----
+[viewer] [1m[31mFATAL[39m[0m: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\sanja\AppData\Local\Temp\next-panic-6d0fb62ce3e81ab8885161c1fc49b8c4.log.
+[viewer] 
+[viewer] To help make Turbopack better, report this error by clicking here: https://github.com/vercel/next.js/discussions/new?category=turbopack-error-report&title=Turbopack%20Error%3A%20Failed%20to%20write%20app%20endpoint%20%2F%28auth%29%2Flogin%2Fpage&body=Turbopack%20version%3A%20%60dc98c04f%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0ATurbopack%20Error%3A%20Failed%20to%20write%20app%20endpoint%20%2F%28auth%29%2Flogin%2Fpage%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace
+[viewer] -----
+[viewer] 
+[viewer] [37m[1m○[22m[39m Compiling /_error ...

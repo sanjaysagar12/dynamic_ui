@@ -150,6 +150,7 @@ export function ChatPanel({
             disabled={pending}
             onSend={onSend}
             surface={surface}
+            token={token}
             leadingAction={
               <button
                 type="button"

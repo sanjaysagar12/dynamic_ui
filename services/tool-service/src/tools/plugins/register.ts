@@ -1,22 +1,15 @@
 import { z } from 'zod';
-import * as bcrypt from 'bcrypt';
-import { isRole } from '@org/shared-types';
-import { UserRole } from '@prisma/client';
 import type { ToolDefinition } from '../types.js';
 import { signToken } from '../../auth/jwt.js';
 import { loadConfig } from '../../config.js';
+import { findExistingUser, createUserRecord } from '../../lib/createUserAccount.js';
 
-// Self-registration defaults to the least-privileged role rather than trusting
-// a caller-supplied role uncritically; a caller-supplied role is only honored
-// if it's one of shared-types's known roles.
-const DEFAULT_ROLE = 'STOREKEEPER';
-const BCRYPT_COST = 12;
-
-const inputSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  role: z.string().optional(),
-});
+const inputSchema = z
+  .object({
+    email: z.string().email(),
+    password: z.string().min(8),
+  })
+  .strict();
 
 type Args = z.infer<typeof inputSchema>;
 
@@ -25,7 +18,7 @@ const config = loadConfig();
 const tool: ToolDefinition<Args> = {
   name: 'register',
   description:
-    "Create a user account. Not used from chat — accounts are set up by the administrator.",
+    'Create a user account. Role cannot be requested at registration — the first account ever created on a fresh deployment becomes OWNER automatically; every registration after that is created as STOREKEEPER, regardless of caller. Elevated accounts are provisioned afterward via the owner-only create_user tool. Not used from chat — accounts are set up by the administrator.',
   inputSchema,
   requiresAuth: false,
   mutates: true,
@@ -38,22 +31,21 @@ const tool: ToolDefinition<Args> = {
     submitLabel: 'Create account',
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.prisma.user.findUnique({ where: { email: args.email } });
+    const existing = await findExistingUser(ctx.prisma, args.email);
     if (existing) {
       return { ok: false, error: 'An account with this email already exists', code: 'DUPLICATE_EMAIL' };
     }
 
-    const role = args.role && isRole(args.role) ? args.role : DEFAULT_ROLE;
-    const passwordHash = await bcrypt.hash(args.password, BCRYPT_COST);
+    // Deliberately ignore any caller-supplied role — see the fix for
+    // "Anyone can register as OWNER" in the security review. The first
+    // account ever created on a fresh deployment becomes OWNER,
+    // unconditionally. Every registration after that is forced to
+    // STOREKEEPER, unconditionally. Elevated accounts after bootstrap are
+    // created only via the owner-only create_user tool.
+    const userCount = await ctx.prisma.user.count();
+    const role = userCount === 0 ? 'OWNER' : 'STOREKEEPER';
 
-    const user = await ctx.prisma.user.create({
-      data: {
-        name: args.email,
-        email: args.email,
-        role: role as UserRole,
-        passwordHash,
-      },
-    });
+    const user = await createUserRecord(ctx.prisma, { email: args.email, password: args.password, role });
 
     const accessToken = signToken({ sub: user.id, email: args.email, role }, config.jwtSecret);
 

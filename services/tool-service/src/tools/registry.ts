@@ -6,6 +6,7 @@ import type { ToolDefinition } from './types.js';
 // instantiation is excessively deep") when called generically here.
 const toJsonSchema = zodToJsonSchema as (schema: unknown) => unknown;
 import registerTool from './plugins/register.js';
+import createUserTool from './plugins/create_user.js';
 import loginTool from './plugins/login.js';
 import whoamiTool from './plugins/whoami.js';
 import listRowsTool from './plugins/list_rows.js';
@@ -52,6 +53,7 @@ import enabledList = require('./tools.enabled.json');
 // means adding both the file and this line.
 const ALL_PLUGINS: ToolDefinition[] = [
   registerTool,
+  createUserTool,
   loginTool,
   whoamiTool,
   listRowsTool,
@@ -135,15 +137,23 @@ export class ToolRegistry {
   }
 
   catalogForListing(): ToolCatalogEntry[] {
-    return Array.from(this.tools.values()).map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: toJsonSchema(tool.inputSchema),
-      mutates: tool.mutates,
-      destructive: tool.destructive ?? false,
-      requiredRoles: tool.requiredRoles ?? [],
-      form: tool.form,
-      display: tool.display,
-    }));
+    // Any requiresAuth: false tool is a UI-only, dedicated-form flow
+    // (register/login today, whatever else joins that list later) — there's
+    // no legitimate reason for a chat agent to ever see or call one, so it's
+    // excluded from the agent-visible catalog on that basis alone, not by
+    // name. This only changes what GET /tools *lists* — POST
+    // /tools/:name/execute still calls these tools directly by name.
+    return Array.from(this.tools.values())
+      .filter((tool) => tool.requiresAuth !== false)
+      .map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: toJsonSchema(tool.inputSchema),
+        mutates: tool.mutates,
+        destructive: tool.destructive ?? false,
+        requiredRoles: tool.requiredRoles ?? [],
+        form: tool.form,
+        display: tool.display,
+      }));
   }
 }

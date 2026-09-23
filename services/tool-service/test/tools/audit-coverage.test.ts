@@ -19,6 +19,11 @@ import updateMaterialTool from '../../src/tools/plugins/update_material.js';
 type ArgsBuilder = (prisma: PrismaClient) => Promise<Record<string, unknown>>;
 
 const ARGS_BUILDERS: Record<string, ArgsBuilder> = {
+  create_user: async () => ({
+    email: `audit-coverage-create-user-${randomUUID()}@example.test`,
+    password: 'audit-coverage-password',
+    role: 'STOREKEEPER',
+  }),
   create_material: async () => ({
     name: `Audit Coverage Material ${randomUUID()}`,
     uom: 'KG',

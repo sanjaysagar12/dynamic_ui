@@ -62,8 +62,24 @@ async function main() {
   // ═══════════════════════════════════════════════════════════════
   console.log('\n── 1. Identity ──');
 
+  // register now grants OWNER automatically to the very first account
+  // created on a fresh deployment (see the fix for "Anyone can register as
+  // OWNER" in the security review) — it no longer accepts a `role` argument
+  // at all. That only produces an OWNER here if the User table is genuinely
+  // empty at this point; if seeding ever runs against a non-empty database,
+  // this would silently produce a STOREKEEPER instead of the intended OWNER,
+  // so assert the precondition explicitly and fail loudly rather than let
+  // that happen quietly.
+  const preSeedUserCount = await prisma.user.count();
+  if (preSeedUserCount !== 0) {
+    throw new Error(
+      `Seed script expects an empty User table before bootstrapping the OWNER account, found ${preSeedUserCount} — ` +
+        'run db:reset:soft or db:reset:full first, don\'t seed against a non-empty database.',
+    );
+  }
+
   const ownerAuth = expectOk<{ accessToken: string; userId: string; email: string; role: string }>(
-    await registerTool.handler(systemCtx, { email: OWNER_EMAIL, password: OWNER_PASSWORD, role: 'OWNER' }),
+    await registerTool.handler(systemCtx, { email: OWNER_EMAIL, password: OWNER_PASSWORD }),
     'register owner',
   );
   console.log(`  owner registered: ${ownerAuth.email} (${ownerAuth.userId})`);
@@ -72,7 +88,6 @@ async function main() {
     await registerTool.handler(systemCtx, {
       email: STOREKEEPER_EMAIL,
       password: STOREKEEPER_PASSWORD,
-      role: 'STOREKEEPER',
     }),
     'register storekeeper',
   );

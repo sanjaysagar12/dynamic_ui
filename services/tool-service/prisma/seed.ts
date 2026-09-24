@@ -19,6 +19,7 @@ import type { ToolContext, ToolResult } from '../src/tools/types.js';
 
 import registerTool from '../src/tools/plugins/register.js';
 import createMaterialTool from '../src/tools/plugins/create_material.js';
+import createPartyTool from '../src/tools/plugins/create_party.js';
 import createCustomerPoTool from '../src/tools/plugins/create_customer_po.js';
 import createJobTool from '../src/tools/plugins/create_job.js';
 import setJobBomTool from '../src/tools/plugins/set_job_bom.js';
@@ -231,9 +232,25 @@ async function main() {
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // 4/5. Suppliers + opening purchase + receipt
-  //    Chennai Wire Traders is created here via create_purchase_order's
-  //    own resolveOrCreateByName(supplierName) path — no separate step.
+  // 4a. Suppliers and customers — added once, up front, with create_party.
+  //    Purchase orders and customer POs no longer create parties as a side
+  //    effect (resolvePartyByName only finds existing ones).
+  // ═══════════════════════════════════════════════════════════════
+  console.log('\n── 4a. Suppliers and customers ──');
+  const PARTIES: { name: string; role: 'SUPPLIER' | 'CUSTOMER'; city: string }[] = [
+    { name: 'Chennai Wire Traders', role: 'SUPPLIER', city: 'Chennai' },
+    { name: 'Coimbatore Ferrite Supplies', role: 'SUPPLIER', city: 'Coimbatore' },
+    { name: 'BrightLED Solutions', role: 'CUSTOMER', city: 'Chennai' },
+    { name: 'SunPower Solar Pvt Ltd', role: 'CUSTOMER', city: 'Coimbatore' },
+    { name: 'Southern Railways – Coimbatore Division', role: 'CUSTOMER', city: 'Coimbatore' },
+  ];
+  for (const p of PARTIES) {
+    expectOk(await createPartyTool.handler(ownerCtx, { ...p, confirmNotDuplicate: false }), `create party: ${p.name}`);
+    console.log(`  ${p.role.toLowerCase()}: ${p.name} (${p.city})`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 4/5. Opening purchase + receipt
   // ═══════════════════════════════════════════════════════════════
   console.log('\n── 4/5. Opening purchase + receipt ──');
 
@@ -306,9 +323,8 @@ async function main() {
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // 4 (cont.). Two more customers — realistic master data with no job
-  //    attached yet, created via create_customer_po's own
-  //    resolveOrCreateByName(customerName) path.
+  // 4 (cont.). Customer POs for the customers added in 4a — realistic
+  //    master data with no job attached yet.
   // ═══════════════════════════════════════════════════════════════
   console.log('\n── 4. Additional customers ──');
 

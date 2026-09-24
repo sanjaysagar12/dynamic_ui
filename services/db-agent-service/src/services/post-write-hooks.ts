@@ -59,6 +59,34 @@ export interface PostWriteHook {
 }
 
 export const POST_WRITE_HOOKS: Record<string, PostWriteHook> = {
+  create_party: {
+    followUpTools: [],
+    followUpInstruction:
+      "A supplier/customer was just saved. The write result's `outcome` is CREATED (a new entry) or " +
+      "TYPE_ADDED (an existing business was also marked as supplier or customer — say that plainly, " +
+      "it is not a second entry). Confirm using the name and city; never show an id or internal code. " +
+      'If no GSTIN was captured, mention in one short clause that it can be added later.',
+    offers: [
+      {
+        label: 'Raise a purchase order to them',
+        tool: 'create_purchase_order',
+        buildPrefill: ({ writeResult }) => {
+          const p = writeResult as { name?: string; isSupplier?: boolean };
+          // Name only — the PO form picks the supplier by name. Never pre-fill lines or rates.
+          return p.name && p.isSupplier ? { supplierName: p.name } : undefined;
+        },
+      },
+      {
+        label: 'Record a customer PO from them',
+        tool: 'create_customer_po',
+        buildPrefill: ({ writeResult }) => {
+          const p = writeResult as { name?: string; isCustomer?: boolean };
+          return p.name && p.isCustomer ? { customerName: p.name } : undefined;
+        },
+      },
+    ],
+  },
+
   create_customer_po: {
     followUpTools: [],
     followUpInstruction:

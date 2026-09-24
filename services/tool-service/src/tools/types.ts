@@ -35,7 +35,7 @@ export interface FormFieldSpec {
     tool: string; // tool to call for lookup/search, e.g. "search_materials"
     valueField: string; // field on the result to store as the arg value, e.g. "id"
     labelField: string; // field to display, e.g. "name"
-    allowCreate?: boolean; // shows a "use this as new name" affordance, backed by resolveOrCreateByName tool-side
+    allowCreate?: boolean; // shows a "use this as new name" affordance. Not for suppliers/customers — those must exist first (create_party)
     // Static args merged into every call to `tool` alongside its live query
     // text — e.g. list_rows's required `table` (and an optional `where`)
     // when there's no dedicated search tool for the referenced entity yet.

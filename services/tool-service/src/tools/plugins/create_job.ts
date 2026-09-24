@@ -40,7 +40,7 @@ const tool: ToolDefinition<Args> = {
         label: 'Customer',
         widget: 'foreign_key',
         required: true,
-        foreignKey: { tool: 'list_rows', valueField: 'id', labelField: 'name', args: { table: 'party', where: { isCustomer: true } } },
+        foreignKey: { tool: 'search_parties', valueField: 'id', labelField: 'label', args: { role: 'CUSTOMER' } },
       },
       {
         name: 'customerPoId',

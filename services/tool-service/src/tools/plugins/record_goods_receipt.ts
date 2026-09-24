@@ -45,7 +45,7 @@ const tool: ToolDefinition<Args> = {
         label: 'Supplier',
         widget: 'foreign_key',
         required: true,
-        foreignKey: { tool: 'list_rows', valueField: 'id', labelField: 'name', args: { table: 'party', where: { isSupplier: true } } },
+        foreignKey: { tool: 'search_parties', valueField: 'id', labelField: 'label', args: { role: 'SUPPLIER' } },
       },
       {
         name: 'purchaseOrderId',

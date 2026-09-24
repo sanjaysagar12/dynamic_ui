@@ -67,9 +67,16 @@ model Party {
   id         String   @id @default(uuid())
   code       String   @unique // auto: PTY-0001 — internal, hidden from storekeeper
   name       String
+  /// Normalized name used to detect duplicates: lowercase, no spaces/punctuation, no trailing
+  /// "Pvt Ltd"/"Ltd"/"Co" etc. "M/s Sundaram Ferrites Pvt. Ltd." → "sundaramferrites".
+  /// Computed ONLY by partyNameKey() in src/lib/partyName.ts — never set it by hand.
+  /// Nullable so the migration can add it to existing rows; backfill with
+  /// prisma/backfill-party-namekey.ts. Every party created from now on has one.
+  nameKey    String?  @unique
   isSupplier Boolean  @default(false)
   isCustomer Boolean  @default(false)
-  gstin      String?
+  /// Stored uppercase, no spaces. One GSTIN = one business, so it's unique.
+  gstin      String?  @unique
   addressLine String?
   city       String?
   state      String?
@@ -88,6 +95,7 @@ model Party {
 
   @@index([isSupplier])
   @@index([isCustomer])
+  @@index([name])
   @@map("parties")
 }
 
@@ -150,6 +158,13 @@ enum NotificationType {
   UNEXPLAINED_VARIANCE
   NEGATIVE_STOCK_WARNING
   RECOUNT_REQUIRED
+  // used by the post-submit follow-ups (post-submit-followups.json)
+  PO_APPROVED
+  PO_REJECTED
+  RATE_CHANGE
+  JOB_VARIANCE
+  COUNT_APPROVED
+  MOVEMENT_REVERSED
 }
 
 model Notification {

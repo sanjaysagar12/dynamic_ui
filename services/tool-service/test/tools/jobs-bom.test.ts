@@ -33,19 +33,29 @@ describe('jobs & BOM tools (in-process)', () => {
   });
 
   describe('create_customer_po', () => {
-    it('creates a new customer PO when given a fresh customerName (also exercises resolveOrCreateByName)', async () => {
+    it('refuses an unknown customerName with PARTY_NOT_FOUND and creates no customer (parties come from create_party only)', async () => {
       const customerName = `Jobs Test Customer ${randomUUID()}`;
+      const before = await prisma.party.count();
+
+      const result = await createCustomerPoTool.handler(ctx, { customerName, number: `PO-JOBS-${randomUUID()}` });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('PARTY_NOT_FOUND');
+      expect(await prisma.party.count()).toBe(before);
+    });
+
+    it('creates a customer PO for an existing customer given by name', async () => {
+      const customer = await createCustomer(prisma);
       const number = `PO-JOBS-${randomUUID()}`;
 
-      const result = await createCustomerPoTool.handler(ctx, { customerName, number });
+      const result = await createCustomerPoTool.handler(ctx, { customerName: customer.name, number });
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      const po = result.data as { id: string; number: string; customerId: string };
+      const po = result.data as { number: string; customerId: string };
       expect(po.number).toBe(number);
-
-      const customer = await prisma.party.findUniqueOrThrow({ where: { id: po.customerId } });
-      expect(customer.isCustomer).toBe(true);
+      expect(po.customerId).toBe(customer.id);
     });
 
     it('resolves an existing party case-insensitively by name rather than creating a duplicate party', async () => {

@@ -39,6 +39,10 @@ import submitStockCountTool from './plugins/submit_stock_count.js';
 import approveStockCountTool from './plugins/approve_stock_count.js';
 import rejectStockCountTool from './plugins/reject_stock_count.js';
 import reverseMovementTool from './plugins/reverse_movement.js';
+import searchPartiesTool from './plugins/search_parties.js';
+import createPartyTool from './plugins/create_party.js';
+import updatePartyTool from './plugins/update_party.js';
+import deactivatePartyTool from './plugins/deactivate_party.js';
 // esModuleInterop is off workspace-wide, so a default import here would read
 // a nonexistent `.default` off webpack's raw JSON module (module.exports is
 // the array itself) and silently resolve to undefined — import-equals avoids
@@ -86,6 +90,10 @@ const ALL_PLUGINS: ToolDefinition[] = [
   approveStockCountTool,
   rejectStockCountTool,
   reverseMovementTool,
+  searchPartiesTool,
+  createPartyTool,
+  updatePartyTool,
+  deactivatePartyTool,
 ];
 
 export interface ToolCatalogEntry {

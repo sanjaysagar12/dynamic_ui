@@ -24,6 +24,19 @@ const ARGS_BUILDERS: Record<string, ArgsBuilder> = {
     password: 'audit-coverage-password',
     role: 'STOREKEEPER',
   }),
+  create_party: async () => ({
+    name: `Audit Coverage Party ${randomUUID()}`,
+    role: 'SUPPLIER',
+    city: 'Chennai',
+  }),
+  update_party: async (prisma) => {
+    const party = await createSupplier(prisma);
+    return { partyId: party.id, city: 'Coimbatore' };
+  },
+  deactivate_party: async (prisma) => {
+    const party = await createSupplier(prisma);
+    return { partyId: party.id, reason: 'audit-coverage test' };
+  },
   create_material: async () => ({
     name: `Audit Coverage Material ${randomUUID()}`,
     uom: 'KG',
@@ -37,10 +50,10 @@ const ARGS_BUILDERS: Record<string, ArgsBuilder> = {
     const material = await createMaterial(prisma);
     return { materialId: material.id, reason: 'audit-coverage test' };
   },
-  create_customer_po: async () => ({
-    customerName: `Audit Coverage Customer ${randomUUID()}`,
-    number: `PO-AUDIT-${randomUUID()}`,
-  }),
+  create_customer_po: async (prisma) => {
+    const customer = await createCustomer(prisma);
+    return { customerName: customer.name, number: `PO-AUDIT-${randomUUID()}` };
+  },
   create_job: async (prisma) => {
     const customer = await createCustomer(prisma);
     return {
@@ -57,8 +70,9 @@ const ARGS_BUILDERS: Record<string, ArgsBuilder> = {
   },
   create_purchase_order: async (prisma) => {
     const material = await createMaterial(prisma);
+    const supplier = await createSupplier(prisma);
     return {
-      supplierName: `Audit Coverage Supplier ${randomUUID()}`,
+      supplierName: supplier.name,
       lines: [{ materialId: material.id, quantity: 10, rate: 100 }],
     };
   },

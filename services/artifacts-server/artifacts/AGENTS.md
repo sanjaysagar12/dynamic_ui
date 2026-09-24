@@ -61,6 +61,9 @@ Two people use them:
   editable. A reason dropdown appears only when counted ≠ system, with "Unexplained" as a
   normal, first-class choice — never force or nudge a different reason.
 - **Opening count:** also has Rate and Invoice No. columns, both required, rate > 0.
+- **Suppliers and customers:** pick them from a `search_parties` dropdown — never a free-text
+  box. New ones are added with the `create_party` form (name without city, separate City and
+  GSTIN fields).
 - **Owner-only actions** (approve/reject POs and counts, reversals, settings): hide them for
   the storekeeper using `whoami`.
 - **Negative stock** is allowed. Show it clearly (e.g. red), never block it.
@@ -80,7 +83,7 @@ Two people use them:
 - Screens that fetch outside data (live copper prices, WhatsApp, email) — the sandbox
   blocks all outside connections.
 
-Prefer purpose-built tools over `list_rows`: `search_materials`, `get_material_balance`,
+Prefer purpose-built tools over `list_rows`: `search_materials`, `search_parties`, `get_material_balance`,
 `get_job`, `list_pending_approvals`, `get_movement_history`, `get_purchase_price_history`.
 
 ## Styling: use Tailwind CSS utility classes

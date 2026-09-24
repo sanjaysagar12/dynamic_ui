@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { ToolError } from './toolError.js';
 
 export interface TranslatedError {
   error: string;
@@ -22,6 +23,14 @@ const PRISMA_ERROR_MAP = new Map<string, TranslatedError>([
   [
     'P2002:customerId,number',
     { error: 'A PO with this number already exists for this customer', code: 'DUPLICATE_CUSTOMER_PO' },
+  ],
+  [
+    'P2002:nameKey',
+    { error: 'A supplier or customer with this name already exists', code: 'DUPLICATE_PARTY' },
+  ],
+  [
+    'P2002:gstin',
+    { error: 'A supplier or customer with this GSTIN already exists', code: 'DUPLICATE_GSTIN' },
   ],
   [
     'P2002:reversalOfId',
@@ -71,6 +80,10 @@ function constraintKey(err: Prisma.PrismaClientKnownRequestError): string | unde
  * always logged server-side, never leaked to the caller verbatim.
  */
 export function translatePrismaError(err: unknown): TranslatedError {
+  // Business-rule failures thrown on purpose by shared helpers carry their own code and
+  // plain-language message — pass them through untouched.
+  if (err instanceof ToolError) return { error: err.message, code: err.code };
+
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     const target = constraintKey(err);
     const hit = (target && PRISMA_ERROR_MAP.get(`${err.code}:${target}`)) ?? PRISMA_ERROR_MAP.get(err.code);

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { ToolDefinition } from '../types.js';
 import { withAuditedTransaction } from '../../lib/withAuditedTransaction.js';
 import { translatePrismaError } from '../../lib/translatePrismaError.js';
-import { resolveOrCreateByName } from '../../lib/resolveOrCreateByName.js';
+import { resolvePartyByName } from '../../lib/resolveParty.js';
 
 const inputSchema = z
   .object({
@@ -21,7 +21,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'create_customer_po',
   description:
-    "Record a purchase order received FROM A CUSTOMER (not one we send a supplier). Creates the customer if new. If the same customer and PO number already exist, it returns the existing one — that is normal for open POs, where the same PO number carries several releases over time. Each release becomes its own job.",
+    "Record a purchase order received FROM A CUSTOMER (not one we send a supplier). The customer must already be saved — it never creates one; if they're new, add them with create_party first. If the same customer and PO number already exist, it returns the existing one — that is normal for open POs, where the same PO number carries several releases over time. Each release becomes its own job.",
   inputSchema,
   mutates: true,
   form: {
@@ -29,16 +29,16 @@ const tool: ToolDefinition<Args> = {
     fields: [
       {
         name: 'customerName',
-        label: 'Customer name',
+        label: 'Customer',
         widget: 'foreign_key',
         required: true,
-        helpText: 'Pick an existing customer, or type a new name — it is resolved-or-created by name, not by id.',
+        helpText: 'Pick the customer. Not in the list? Add them first with their GSTIN and city.',
         foreignKey: {
-          tool: 'list_rows',
+          tool: 'search_parties',
           valueField: 'name',
-          labelField: 'name',
-          allowCreate: true,
-          args: { table: 'party', where: { isCustomer: true } },
+          labelField: 'label',
+          allowCreate: false,
+          args: { role: 'CUSTOMER' },
         },
       },
       { name: 'number', label: 'PO number', widget: 'text', required: true },
@@ -50,7 +50,7 @@ const tool: ToolDefinition<Args> = {
     try {
       const customer = args.customerId
         ? await ctx.prisma.party.findUnique({ where: { id: args.customerId } })
-        : await ctx.prisma.$transaction((tx) => resolveOrCreateByName(tx, 'customer', args.customerName!));
+        : await resolvePartyByName(ctx.prisma, 'customer', args.customerName!);
 
       if (!customer) {
         return { ok: false, error: 'No party found for the given customerId', code: 'CUSTOMER_NOT_FOUND' };

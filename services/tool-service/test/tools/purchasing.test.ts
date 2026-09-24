@@ -72,10 +72,10 @@ describe('purchasing tools (in-process)', () => {
         update: { value: '100000' },
       });
       const material = await createMaterial(prisma);
-      const supplierName = `Purchasing Test Supplier ${randomUUID()}`;
+      const supplier = await createSupplier(prisma, { name: `Purchasing Test Supplier ${randomUUID()}` });
 
       const result = await createPurchaseOrderTool.handler(storekeeperCtx, {
-        supplierName,
+        supplierName: supplier.name,
         lines: [{ materialId: material.id, quantity: 10, rate: 100 }], // totalValue 1000, well under 100000
       });
 
@@ -96,10 +96,10 @@ describe('purchasing tools (in-process)', () => {
       });
       const owner = await createTestUser(prisma, { role: 'OWNER' });
       const material = await createMaterial(prisma);
-      const supplierName = `Purchasing Test Supplier ${randomUUID()}`;
+      const supplier = await createSupplier(prisma, { name: `Purchasing Test Supplier ${randomUUID()}` });
 
       const result = await createPurchaseOrderTool.handler(storekeeperCtx, {
-        supplierName,
+        supplierName: supplier.name,
         lines: [{ materialId: material.id, quantity: 10, rate: 100 }], // totalValue 1000 > 500
       });
 
@@ -131,7 +131,8 @@ describe('purchasing tools (in-process)', () => {
       });
       await createTestUser(prisma, { role: 'OWNER' }); // ensure at least one active OWNER exists to notify
       const material = await createMaterial(prisma);
-      const supplierName = `Purchasing Test Supplier ${randomUUID()}`;
+      const supplier = await createSupplier(prisma, { name: `Purchasing Test Supplier ${randomUUID()}` });
+      const supplierName = supplier.name;
 
       const failingPrisma = prisma.$extends({
         query: {
@@ -155,12 +156,9 @@ describe('purchasing tools (in-process)', () => {
 
       const after = await prisma.purchaseOrder.count();
       expect(after).toBe(before); // no orphan PO left behind
-      const orphanedSupplier = await prisma.party.findFirst({ where: { name: supplierName } });
-      // resolveOrCreateByName runs in its own transaction, separate from
-      // withAuditedTransaction's — the supplier itself is expected to
-      // persist even though the PO doesn't; only the PO+notification pair
-      // is the atomicity boundary under test here.
-      expect(orphanedSupplier).not.toBeNull();
+      // The supplier existed before the call and is untouched; purchase orders never create
+      // parties any more, so there is nothing else that could be left behind.
+      expect(await prisma.party.count({ where: { name: supplierName } })).toBe(1);
     });
   });
 

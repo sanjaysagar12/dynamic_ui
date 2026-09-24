@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { ToolDefinition } from '../types.js';
 import { withAuditedTransaction } from '../../lib/withAuditedTransaction.js';
 import { translatePrismaError } from '../../lib/translatePrismaError.js';
-import { resolveOrCreateByName } from '../../lib/resolveOrCreateByName.js';
+import { resolvePartyByName } from '../../lib/resolveParty.js';
 import { nextNumber, indianFinancialYear } from '../../lib/numberSeries.js';
 
 // rate is optional here only so a line missing it can be reported back as
@@ -34,7 +34,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'create_purchase_order',
   description:
-    "Raise a purchase order to a SUPPLIER. Creates the supplier if new. Every line needs a quantity and a rate the user actually gives — never invent or silently reuse a rate; you may look up the last rate paid and suggest it, and use it only if the user agrees. Orders above the owner's approval limit wait for the owner; smaller ones are approved immediately. Tell the user which happened.",
+    "Raise a purchase order to a SUPPLIER who is already saved — it never creates one. If the supplier isn't found, use search_parties to check the spelling, and if they're genuinely new, add them with create_party first. Every line needs a quantity and a rate the user actually gives — never invent or silently reuse a rate; you may look up the last rate paid and suggest it, and use it only if the user agrees. Orders above the owner's approval limit wait for the owner; smaller ones are approved immediately. Tell the user which happened.",
   inputSchema,
   mutates: true,
   form: {
@@ -42,16 +42,16 @@ const tool: ToolDefinition<Args> = {
     fields: [
       {
         name: 'supplierName',
-        label: 'Supplier name',
+        label: 'Supplier',
         widget: 'foreign_key',
         required: true,
-        helpText: 'Pick an existing supplier, or type a new name — it is resolved-or-created by name, not by id.',
+        helpText: 'Pick the supplier. Not in the list? Add them first with their GSTIN and city.',
         foreignKey: {
-          tool: 'list_rows',
+          tool: 'search_parties',
           valueField: 'name',
-          labelField: 'name',
-          allowCreate: true,
-          args: { table: 'party', where: { isSupplier: true } },
+          labelField: 'label',
+          allowCreate: false,
+          args: { role: 'SUPPLIER' },
         },
       },
       {
@@ -101,7 +101,7 @@ const tool: ToolDefinition<Args> = {
     try {
       const supplier = args.supplierId
         ? await ctx.prisma.party.findUnique({ where: { id: args.supplierId } })
-        : await ctx.prisma.$transaction((tx) => resolveOrCreateByName(tx, 'supplier', args.supplierName!));
+        : await resolvePartyByName(ctx.prisma, 'supplier', args.supplierName!);
 
       if (!supplier) {
         return { ok: false, error: 'No party found for the given supplierId', code: 'SUPPLIER_NOT_FOUND' };

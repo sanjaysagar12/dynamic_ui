@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Party, PrismaClient } from '@prisma/client';
+import { partyNameKey } from '../../src/lib/partyName.js';
 
 export interface CreatePartyOverrides {
   code?: string;
@@ -14,6 +15,7 @@ export async function createSupplier(prisma: PrismaClient, overrides: CreatePart
     data: {
       code: overrides.code ?? `PTY-TEST-${suffix}`,
       name: overrides.name ?? `Test Supplier ${suffix}`,
+      nameKey: partyNameKey(overrides.name ?? `Test Supplier ${suffix}`),
       isSupplier: true,
       isCustomer: false,
       gstin: overrides.gstin ?? undefined,
@@ -28,6 +30,7 @@ export async function createCustomer(prisma: PrismaClient, overrides: CreatePart
     data: {
       code: overrides.code ?? `PTY-TEST-${suffix}`,
       name: overrides.name ?? `Test Customer ${suffix}`,
+      nameKey: partyNameKey(overrides.name ?? `Test Customer ${suffix}`),
       isSupplier: false,
       isCustomer: true,
       gstin: overrides.gstin ?? undefined,

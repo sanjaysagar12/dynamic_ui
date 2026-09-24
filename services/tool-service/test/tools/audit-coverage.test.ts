@@ -151,6 +151,7 @@ const ARGS_BUILDERS: Record<string, ArgsBuilder> = {
     const movement = await createTestMovement(prisma);
     return { movementId: movement.id, reason: 'audit-coverage test' };
   },
+  update_setting: async () => ({ key: 'po.approval_threshold_inr', value: '75000' }),
 };
 
 // Constructed synchronously, at module scope — it.each's array argument

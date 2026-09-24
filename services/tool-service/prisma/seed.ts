@@ -18,6 +18,7 @@ import { assertLocalDatabase } from './lib/localDbGuard.js';
 import type { ToolContext, ToolResult } from '../src/tools/types.js';
 
 import registerTool from '../src/tools/plugins/register.js';
+import updateSettingTool from '../src/tools/plugins/update_setting.js';
 import createMaterialTool from '../src/tools/plugins/create_material.js';
 import createPartyTool from '../src/tools/plugins/create_party.js';
 import createCustomerPoTool from '../src/tools/plugins/create_customer_po.js';
@@ -107,33 +108,21 @@ async function main() {
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // 2. Settings — no tool manages Setting yet, direct Prisma write.
-  //    Must happen before any create_purchase_order call: that tool
-  //    treats a MISSING setting as threshold 0 (conservatively requiring
-  //    approval on everything), which would defeat step 5's "auto-approved
-  //    below threshold" opening PO.
+  // 2. Settings — via the real update_setting tool (upsert under the
+  //    hood, so a db:seed-only run against an already-seeded database
+  //    stays idempotent). Must happen before any create_purchase_order
+  //    call: that tool treats a MISSING setting as threshold 0
+  //    (conservatively requiring approval on everything), which would
+  //    defeat step 5's "auto-approved below threshold" opening PO.
   // ═══════════════════════════════════════════════════════════════
   console.log('\n── 2. Settings ──');
 
-  // upsert, not create: a db:seed-only run (no reset first) against a
-  // database that already has this setting from a prior run must not crash
-  // on the unique `key` constraint — reseeding should be idempotent here.
-  await prisma.setting.upsert({
-    where: { key: 'po.approval_threshold_inr' },
-    create: {
-      key: 'po.approval_threshold_inr',
-      value: '50000',
-      valueType: 'number',
-      description: 'Purchase orders above this INR value require OWNER approval before being marked APPROVED.',
-    },
-    update: {
-      value: '50000',
-      valueType: 'number',
-      description: 'Purchase orders above this INR value require OWNER approval before being marked APPROVED.',
-    },
-  });
-  console.log('  po.approval_threshold_inr = 50000');
-  summary.settings = { 'po.approval_threshold_inr': '50000' };
+  const approvalThreshold = expectOk<{ key: string; value: string }>(
+    await updateSettingTool.handler(ownerCtx, { key: 'po.approval_threshold_inr', value: '50000' }),
+    'set po.approval_threshold_inr',
+  );
+  console.log(`  ${approvalThreshold.key} = ${approvalThreshold.value}`);
+  summary.settings = { [approvalThreshold.key]: approvalThreshold.value };
 
   // ═══════════════════════════════════════════════════════════════
   // 3. Materials

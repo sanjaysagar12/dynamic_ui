@@ -12,7 +12,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'approve_stock_count',
   description:
-    "OWNER ONLY. Approve a stock count that is waiting for the owner. Approval changes stock to match what was physically counted: every material whose count differed gets an adjustment at its current average rate; matching materials are untouched. For the opening count, approval puts the opening stock in at the rates taken from invoices. Before the owner confirms, show how many materials differ, the biggest differences with their reasons, and the total rupee value of the differences. This cannot be undone except by later counts.",
+    "OWNER ONLY. Approve a stock count that is waiting for the owner. A normal count changes stock to match what was counted: every material whose count differed gets an adjustment at its current average rate. The OPENING count instead puts every material into stock at the rate entered from its invoice — before the owner confirms, show the total value and point out any rate that looks unusual. This cannot be undone except by later counts.",
   inputSchema,
   mutates: true,
   destructive: true,
@@ -52,6 +52,19 @@ const tool: ToolDefinition<Args> = {
         code: 'NOT_PENDING',
       };
     }
+    if (count.isOpening) {
+      // The opening count's lines were frozen at zero; any stock recorded since would be counted twice.
+      const anyMovement = await ctx.prisma.stockMovement.findFirst({ select: { id: true } });
+      if (anyMovement) {
+        return {
+          ok: false,
+          error:
+            'Stock was recorded after the opening count started, so it can no longer be approved as-is. ' +
+            'Send it back so the counts can be checked against what has been received or issued since.',
+          code: 'OPENING_NOT_FIRST',
+        };
+      }
+    }
 
     try {
       const outcome = await withAuditedTransaction(
@@ -70,13 +83,47 @@ const tool: ToolDefinition<Args> = {
             data: { status: 'APPROVED', approvedById: ctx.userId, approvedAt: new Date() },
           });
 
+          const movements = [];
+
+          if (count.isOpening) {
+            // OPENING: every material with stock goes in at the rate from its last purchase invoice.
+            // trg_guard_count_submission has already refused the APPROVED flip above if any such
+            // line lacks a rate, and trg_guard_count_adjustment only lets OPENING rows through for
+            // an approved opening count.
+            for (const line of count.lines) {
+              const qty = Number(line.countedQty);
+              if (!(qty > 0)) continue;
+              const movement = await tx.stockMovement.create({
+                data: {
+                  materialId: line.materialId,
+                  type: 'OPENING',
+                  direction: 'IN',
+                  quantity: qty,
+                  rate: line.unitRate ?? 0,
+                  // stamped by trg_apply_stock_movement — placeholders only
+                  value: 0,
+                  balanceQtyAfter: 0,
+                  balanceRateAfter: 0,
+                  balanceValueAfter: 0,
+                  stockCountLineId: line.id,
+                  movementDate: count.countDate,
+                  notes: line.sourceInvoiceNo ? `Opening rate from invoice ${line.sourceInvoiceNo}` : 'Opening stock',
+                  actorType: ctx.userId ? 'HUMAN' : 'AGENT',
+                  actorId: ctx.userId,
+                  toolName: 'approve_stock_count',
+                },
+              });
+              movements.push(movement);
+            }
+            return { count: updated, isOpening: true, movements };
+          }
+
           const differingLines = count.lines.filter((line) => Number(line.differenceQty) !== 0);
           const balances = await tx.stockBalance.findMany({
             where: { materialId: { in: differingLines.map((line) => line.materialId) } },
           });
           const rateByMaterial = new Map(balances.map((b) => [b.materialId, b.averageRate]));
 
-          const movements = [];
           for (const line of differingLines) {
             const differenceQty = Number(line.differenceQty);
             const movement = await tx.stockMovement.create({

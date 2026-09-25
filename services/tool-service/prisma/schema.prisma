@@ -674,7 +674,19 @@ model StockCountLine {
   /// chk_count_difference tolerates NULL under SQL's three-valued logic.
   differenceQty Decimal? @db.Decimal(18, 4)
 
-  /// SPILLAGE | EXTRA_WASTAGE | MISSING | ENTRY_ERROR | UNEXPLAINED
+  /// OPENING COUNT ONLY. Rate per unit, taken by the storekeeper from the
+  /// last purchase invoice for this material. Required (> 0) on every opening
+  /// line with stock before the count can be submitted — enforced by
+  /// trg_guard_count_submission in inventory_guards.sql. Ignored on normal
+  /// counts, which post differences at the current average rate.
+  unitRate          Decimal?  @db.Decimal(18, 4)
+  /// OPENING COUNT ONLY, optional. The invoice the rate came from, so the
+  /// owner can check a rate that looks wrong before approving.
+  sourceInvoiceNo   String?
+  sourceInvoiceDate DateTime? @db.Date
+
+  /// SPILLAGE | EXTRA_WASTAGE | MISSING | ENTRY_ERROR | UNEXPLAINED.
+  /// Always null on the opening count — nothing "differs" on day one.
   reasonCode String?
   notes      String?
 

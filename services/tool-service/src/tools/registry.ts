@@ -40,6 +40,7 @@ import approveStockCountTool from './plugins/approve_stock_count.js';
 import rejectStockCountTool from './plugins/reject_stock_count.js';
 import reverseMovementTool from './plugins/reverse_movement.js';
 import searchPartiesTool from './plugins/search_parties.js';
+import listCountLinesTool from './plugins/list_count_lines.js';
 import createPartyTool from './plugins/create_party.js';
 import updatePartyTool from './plugins/update_party.js';
 import deactivatePartyTool from './plugins/deactivate_party.js';
@@ -93,6 +94,7 @@ const ALL_PLUGINS: ToolDefinition[] = [
   rejectStockCountTool,
   reverseMovementTool,
   searchPartiesTool,
+  listCountLinesTool,
   createPartyTool,
   updatePartyTool,
   deactivatePartyTool,

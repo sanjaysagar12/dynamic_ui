@@ -89,9 +89,12 @@ describe('1.3 running balance / full-ledger-replay invariant', () => {
       await insertMovement(client, { materialId: materialB.id, type: 'ISSUE', direction: 'OUT', quantity: 40, rate: 0, jobId });
       await insertMovement(client, { materialId: materialB.id, type: 'RETURN', direction: 'IN', quantity: 5, rate: 0, jobId });
 
-      // Material C: opening balance, receipt, two issues, scrap in/out.
+      // Material C: first receipt, second receipt, two issues, scrap in/out.
+      // (Was an OPENING row. OPENING may now only come from an approved opening
+      // count — chk_opening_has_count — which is covered in opening-count.test.ts;
+      // here only the running balance matters, and a RECEIPT is identical for that.)
       const materialC = await insertMaterial(client);
-      await insertMovement(client, { materialId: materialC.id, type: 'OPENING', quantity: 15, rate: 3 });
+      await insertMovement(client, { materialId: materialC.id, type: 'RECEIPT', quantity: 15, rate: 3 });
       await insertMovement(client, { materialId: materialC.id, type: 'RECEIPT', quantity: 25, rate: 6 });
       await insertMovement(client, { materialId: materialC.id, type: 'ISSUE', direction: 'OUT', quantity: 10, rate: 0, jobId });
       await insertMovement(client, { materialId: materialC.id, type: 'ISSUE', direction: 'OUT', quantity: 5, rate: 0, jobId });

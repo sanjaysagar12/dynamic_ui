@@ -287,23 +287,27 @@ export const POST_WRITE_HOOKS: Record<string, PostWriteHook> = {
     followUpTools: [],
     followUpInstruction:
       'A stock count was just started successfully. Confirm it plainly using its number. If the write ' +
-      "result's isOpening is true, briefly explain this is the opening count: enter the quantity, rate " +
-      'and invoice number for each material, and it can be done over several days.',
+      "result's isOpening is true, briefly explain this is the opening count: enter the quantity and the " +
+      'rate from the last purchase invoice for each material (the invoice number is optional), and it can ' +
+      'be done over several days. Never suggest a rate.',
   },
 
   submit_stock_count: {
     followUpTools: [],
     followUpInstruction:
-      'The stock count was just submitted to the owner successfully. State plainly how many materials ' +
-      'differ (materialsWithDifference) and the total variance value in rupees (totalVarianceValue) ' +
-      "from the write result. Make clear stock won't change until the owner approves.",
+      'The stock count was just submitted to the owner successfully. If the write result has ' +
+      'isOpening: true, state the number of materials and the total opening value in rupees ' +
+      '(openingValue) — do NOT talk about differences, nothing differs on day one. Otherwise state how ' +
+      'many materials differ (materialsWithDifference) and the total variance value in rupees ' +
+      "(totalVarianceValue). Either way, make clear stock won't change until the owner approves.",
   },
 
   approve_stock_count: {
     followUpTools: [],
     followUpInstruction:
       'The stock count was just approved successfully. Confirm plainly that stock now matches what was ' +
-      'counted, using its number from the write result.',
+      'counted, using its number from the write result. If it was the opening count, say the opening ' +
+      'stock is now in at the invoice rates and the system is live.',
     // Deferred: the spec also offers "see the leak report", but get_leak_report doesn't exist yet
     // (see business-flow-inventory.md's own missingTools note) — hidden until it does.
   },

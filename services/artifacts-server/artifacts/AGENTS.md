@@ -60,7 +60,7 @@ Two people use them:
 - **Stock count grid:** the "System" column is read-only and frozen. Only "Counted" is
   editable. A reason dropdown appears only when counted ≠ system, with "Unexplained" as a
   normal, first-class choice — never force or nudge a different reason.
-- **Opening count:** also has Rate and Invoice No. columns, both required, rate > 0.
+- **Opening count:** also has a Rate column (required, > 0, from the last purchase invoice — never pre-filled) and an optional Invoice No. column. No reason column.
 - **Suppliers and customers:** pick them from a `search_parties` dropdown — never a free-text
   box. New ones are added with the `create_party` form (name without city, separate City and
   GSTIN fields).

@@ -15,7 +15,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'start_stock_count',
   description:
-    "Start a physical stock count. Freezes the system quantity of every material (or chosen materials) at this moment so later movements don't shift it. Counting can then be filled in over time. The opening count at go-live is a special one-time count that also records a rate and invoice number per material; there is only ever one.",
+    "Start a physical stock count. Freezes the system quantity of every material (or chosen materials) at this moment so later movements don't shift it; counts can then be filled in over several days. The OPENING count at go-live is special: it happens once, before any other stock is recorded, and for each material records a rate from the last purchase invoice (invoice number optional). If an opening count is already in progress, continue that one instead of starting another.",
   inputSchema,
   mutates: true,
   form: {
@@ -42,6 +42,37 @@ const tool: ToolDefinition<Args> = {
     submitLabel: 'Start count',
   },
   handler: async (ctx, args) => {
+    if (args.isOpening) {
+      // There is only ever one opening count, and it must come before any other stock activity:
+      // its lines are frozen at zero, so a receipt or issue recorded before it would be counted twice.
+      const existing = await ctx.prisma.stockCount.findFirst({
+        where: { isOpening: true, status: { in: ['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'APPROVED'] } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existing?.status === 'APPROVED') {
+        return {
+          ok: false,
+          error: `The opening count (${existing.number}) is already done. New materials come into stock through goods receipts.`,
+          code: 'OPENING_ALREADY_DONE',
+        };
+      }
+      if (existing) {
+        return {
+          ok: false,
+          error: `The opening count ${existing.number} is already in progress — continue that one.`,
+          code: 'OPENING_IN_PROGRESS',
+        };
+      }
+      const anyMovement = await ctx.prisma.stockMovement.findFirst({ select: { id: true } });
+      if (anyMovement) {
+        return {
+          ok: false,
+          error: 'Stock has already been recorded in the system, so an opening count is no longer possible. Use a normal stock count.',
+          code: 'OPENING_NOT_FIRST',
+        };
+      }
+    }
+
     try {
       const count = await withAuditedTransaction(
         ctx,

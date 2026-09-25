@@ -3,7 +3,7 @@
 import { Sparkles } from 'lucide-react';
 import { useSession } from '../../lib/session/session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
-import { useRenameArtifactMutation, useDeleteArtifactMutation } from '../../lib/queries/artifacts';
+import { useRenameArtifactMutation, useDeleteArtifactMutation, useEditArtifactMutation } from '../../lib/queries/artifacts';
 import { Skeleton } from '../ui/skeleton';
 import { ArtifactListItem } from './ArtifactListItem';
 import { cn } from '../../lib/utils/cn';
@@ -21,6 +21,7 @@ export function Sidebar({ activeArtifactSlug, isAssistantActive, onSelectArtifac
   const { artifacts, loading } = useArtifactCatalog(token);
   const renameMutation = useRenameArtifactMutation(token);
   const deleteMutation = useDeleteArtifactMutation(token);
+  const editMutation = useEditArtifactMutation(token);
 
   const handleDelete = (slug: string) => {
     deleteMutation.mutate(slug);
@@ -62,6 +63,7 @@ export function Sidebar({ activeArtifactSlug, isAssistantActive, onSelectArtifac
                   onSelect={() => onSelectArtifact(artifact.slug)}
                   onRename={(title) => renameMutation.mutate({ slug: artifact.slug, title })}
                   onDelete={() => handleDelete(artifact.slug)}
+                  onEdit={(prompt) => editMutation.mutateAsync({ slug: artifact.slug, prompt }).then((result) => result.reply)}
                 />
               ))}
             </div>

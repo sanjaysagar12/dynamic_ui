@@ -60,14 +60,23 @@ const tool: ToolDefinition<Args> = {
             data: { status: 'REJECTED', rejectionNote: args.rejectionNote },
           });
 
-          const owners = await tx.user.findMany({ where: { role: 'OWNER', isActive: true } });
-          for (const owner of owners) {
+          // The recount is the storekeeper's job, so he's the one told — not the owner who just
+          // sent it back. Whoever started the count is included; owners only as a last resort so
+          // the request is never lost.
+          const storekeepers = await tx.user.findMany({ where: { role: 'STOREKEEPER', isActive: true } });
+          const recipientIds = new Set(storekeepers.map((u) => u.id));
+          if (count.countedById) recipientIds.add(count.countedById);
+          if (recipientIds.size === 0) {
+            const owners = await tx.user.findMany({ where: { role: 'OWNER', isActive: true } });
+            owners.forEach((o) => recipientIds.add(o.id));
+          }
+          for (const userId of recipientIds) {
             await tx.notification.create({
               data: {
-                userId: owner.id,
+                userId,
                 type: 'RECOUNT_REQUIRED',
-                title: `Stock count ${updated.number} rejected — recount required`,
-                body: `Stock count ${updated.number} was rejected: ${args.rejectionNote}`,
+                title: `Recount needed: ${updated.number}`,
+                body: `The owner sent count ${updated.number} back: ${args.rejectionNote}. Fix the lines and send it again.`,
                 entityType: 'StockCount',
                 entityId: updated.id,
               },

@@ -12,7 +12,7 @@ type Args = z.infer<typeof inputSchema>;
 const tool: ToolDefinition<Args> = {
   name: 'submit_stock_count',
   description:
-    "Send a finished stock count to the owner for approval. Every material must have a counted quantity first (and on the opening count, a rate and invoice number) — if not, list exactly what's missing. Stock doesn't change until the owner approves.",
+    "Send a finished stock count to the owner for approval. Every material needs a counted quantity first, and on the opening count every material with stock also needs a rate (invoice number optional) — if anything is missing, say exactly which materials. Also used to resend a count the owner sent back, once it's fixed. Stock doesn't change until the owner approves.",
   inputSchema,
   mutates: true,
   form: {
@@ -31,20 +31,36 @@ const tool: ToolDefinition<Args> = {
   handler: async (ctx, args) => {
     const count = await ctx.prisma.stockCount.findUnique({
       where: { id: args.stockCountId },
-      include: { lines: true },
+      include: { lines: { include: { material: true } } },
     });
     if (!count) {
       return { ok: false, error: 'Stock count not found', code: 'COUNT_NOT_FOUND' };
     }
-    if (count.status !== 'DRAFT') {
+    // REJECTED = sent back by the owner and fixed by the storekeeper — it can be resubmitted.
+    if (count.status !== 'DRAFT' && count.status !== 'REJECTED') {
       return { ok: false, error: `Stock count ${count.number} is ${count.status}, not DRAFT`, code: 'NOT_DRAFT' };
     }
-    if (count.lines.some((line) => line.countedQty === null)) {
+    const names = (lines: typeof count.lines) => {
+      const n = lines.map((l) => l.material.name);
+      return n.length > 8 ? `${n.slice(0, 8).join(', ')} and ${n.length - 8} more` : n.join(', ');
+    };
+    const uncounted = count.lines.filter((line) => line.countedQty === null);
+    if (uncounted.length > 0) {
       return {
         ok: false,
-        error: `Stock count ${count.number} has at least one line with no counted quantity recorded yet`,
+        error: `Not counted yet: ${names(uncounted)}.`,
         code: 'INCOMPLETE_COUNT',
       };
+    }
+    if (count.isOpening) {
+      const noRate = count.lines.filter((l) => Number(l.countedQty) > 0 && l.unitRate === null);
+      if (noRate.length > 0) {
+        return {
+          ok: false,
+          error: `Rate from the last purchase invoice still needed for: ${names(noRate)}.`,
+          code: 'INCOMPLETE_COUNT',
+        };
+      }
     }
 
     try {
@@ -68,21 +84,29 @@ const tool: ToolDefinition<Args> = {
             0,
           );
 
+          // Opening count: the owner is approving values, not differences.
+          const openingValue = count.isOpening
+            ? count.lines.reduce((sum, l) => sum + Number(l.countedQty) * Number(l.unitRate ?? 0), 0)
+            : 0;
+          const body = count.isOpening
+            ? `Opening stock count ${updated.number}: ${count.lines.length} material(s), total value ₹${Math.round(openingValue).toLocaleString('en-IN')}. Check the rates, then approve.`
+            : `Stock count ${updated.number}: ${materialsWithDifference} material(s) with a difference, total difference ₹${Math.round(totalVarianceValue).toLocaleString('en-IN')}. Waiting for your approval.`;
+
           const owners = await tx.user.findMany({ where: { role: 'OWNER', isActive: true } });
           for (const owner of owners) {
             await tx.notification.create({
               data: {
                 userId: owner.id,
                 type: 'COUNT_PENDING_APPROVAL',
-                title: `Stock count ${updated.number} needs approval`,
-                body: `Stock count ${updated.number}: ${materialsWithDifference} material(s) with a difference, total difference ₹${Math.round(totalVarianceValue).toLocaleString('en-IN')}. Waiting for your approval.`,
+                title: count.isOpening ? `Opening stock ${updated.number} needs approval` : `Stock count ${updated.number} needs approval`,
+                body,
                 entityType: 'StockCount',
                 entityId: updated.id,
               },
             });
           }
 
-          return { count: updated, materialsWithDifference, totalVarianceValue };
+          return { count: updated, isOpening: count.isOpening, materialsWithDifference, totalVarianceValue, openingValue };
         },
         (outcome) => ({
           entityType: 'StockCount',

@@ -172,12 +172,14 @@ notebook and the gap vanished. In this system a count is never an overwrite.
   count is an owner-approved count.
 
 THE OPENING COUNT (go-live, happens once)
-- Every material gets a quantity AND a rate, and the rate comes from the LAST PURCHASE
-  INVOICE for that material, with the invoice number. No estimates. No ₹0.
-- If he doesn't have an invoice to hand, leave that rate empty and move on. Never suggest
-  a rate yourself.
+- It happens once, before any other stock is recorded. If one is already in progress,
+  continue it — never start a second.
+- Every material with stock gets a quantity AND a rate. The rate comes from the LAST
+  PURCHASE INVOICE for that material. The invoice number is optional — record it if he
+  gives it, don't insist on it. No estimates, no ₹0.
+- If he doesn't have the rate to hand, leave it empty and move on. Never suggest a rate.
 - It can be filled over several days. Don't ask for reasons — everything differs from zero.
-- There is only ever one opening count. It never appears in the leak report.
+- It goes to the owner for approval like any count. It never appears in the leak report.
 
 ═══ HARD RULES — NEVER BREAK THESE ═══
 

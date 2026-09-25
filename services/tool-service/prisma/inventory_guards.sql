@@ -60,13 +60,22 @@ ALTER TABLE stock_movements
     type <> 'COUNT_ADJUSTMENT' OR "stockCountLineId" IS NOT NULL
   );
 
+-- OPENING movements need the same protection: they may only come from the
+-- single approved opening count. Without this, an OPENING row could add
+-- stock at any rate, at any time, with no count and no approval.
+ALTER TABLE stock_movements
+  ADD CONSTRAINT chk_opening_has_count CHECK (
+    type <> 'OPENING' OR "stockCountLineId" IS NOT NULL
+  );
+
 CREATE OR REPLACE FUNCTION guard_count_adjustment()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_status TEXT;
+  v_status     TEXT;
+  v_is_opening BOOLEAN;
 BEGIN
-  IF NEW.type = 'COUNT_ADJUSTMENT' THEN
-    SELECT sc.status INTO v_status
+  IF NEW.type IN ('COUNT_ADJUSTMENT', 'OPENING') THEN
+    SELECT sc.status, sc."isOpening" INTO v_status, v_is_opening
     FROM stock_count_lines scl
     JOIN stock_counts sc ON sc.id = scl."stockCountId"
     WHERE scl.id = NEW."stockCountLineId";
@@ -76,6 +85,16 @@ BEGIN
         'Stock adjustment blocked: count is % , owner approval required',
         COALESCE(v_status, 'MISSING');
     END IF;
+
+    -- The opening count posts OPENING movements; every other count posts
+    -- COUNT_ADJUSTMENT. Mixing them up would either value opening stock at
+    -- the (zero) average or hide real differences from the leak report.
+    IF NEW.type = 'OPENING' AND v_is_opening IS DISTINCT FROM TRUE THEN
+      RAISE EXCEPTION 'OPENING movements can only come from the opening count';
+    END IF;
+    IF NEW.type = 'COUNT_ADJUSTMENT' AND v_is_opening THEN
+      RAISE EXCEPTION 'The opening count posts OPENING movements, not COUNT_ADJUSTMENT';
+    END IF;
   END IF;
   RETURN NEW;
 END;
@@ -84,6 +103,65 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_guard_count_adjustment
   BEFORE INSERT ON stock_movements
   FOR EACH ROW EXECUTE FUNCTION guard_count_adjustment();
+
+-- ── 7b. The opening count ─────────────────────────────────────────
+--     Go-live happens once. The storekeeper counts every material and
+--     enters the rate from its last purchase invoice (invoice number is
+--     optional). Without a rate, opening stock would be valued at ₹0 and
+--     every job cost after it would be understated.
+ALTER TABLE stock_count_lines
+  ADD CONSTRAINT chk_count_rate_positive
+    CHECK ("unitRate" IS NULL OR "unitRate" > 0);
+
+CREATE OR REPLACE FUNCTION guard_count_submission()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_missing_qty  INT;
+  v_missing_rate INT;
+  v_other        INT;
+BEGIN
+  -- Leaving DRAFT/REJECTED for review or approval: nothing may be blank.
+  IF NEW.status IN ('PENDING_APPROVAL', 'APPROVED')
+     AND OLD.status IS DISTINCT FROM NEW.status THEN
+
+    SELECT COUNT(*) INTO v_missing_qty
+    FROM stock_count_lines
+    WHERE "stockCountId" = NEW.id AND "countedQty" IS NULL;
+    IF v_missing_qty > 0 THEN
+      RAISE EXCEPTION 'COUNT_INCOMPLETE: % material(s) not yet counted', v_missing_qty;
+    END IF;
+
+    IF NEW."isOpening" THEN
+      -- Rate required on every line that has stock. Invoice number is optional.
+      SELECT COUNT(*) INTO v_missing_rate
+      FROM stock_count_lines
+      WHERE "stockCountId" = NEW.id AND "countedQty" > 0 AND "unitRate" IS NULL;
+      IF v_missing_rate > 0 THEN
+        RAISE EXCEPTION 'COUNT_INCOMPLETE: % material(s) without a rate', v_missing_rate;
+      END IF;
+    END IF;
+  END IF;
+
+  -- Only one opening count may ever be approved. A second one would be a
+  -- way to reset stock to any number without a single difference showing.
+  IF NEW."isOpening" AND NEW.status = 'APPROVED'
+     AND OLD.status IS DISTINCT FROM 'APPROVED' THEN
+    PERFORM pg_advisory_xact_lock(hashtext('vijaya_opening_count'));
+    SELECT COUNT(*) INTO v_other
+    FROM stock_counts
+    WHERE "isOpening" AND status = 'APPROVED' AND id <> NEW.id;
+    IF v_other > 0 THEN
+      RAISE EXCEPTION 'OPENING_ALREADY_DONE: an opening count has already been approved';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_guard_count_submission
+  BEFORE UPDATE ON stock_counts
+  FOR EACH ROW EXECUTE FUNCTION guard_count_submission();
 
 -- ── 8. THE LEDGER IS APPEND-ONLY ──────────────────────────────────
 --     No UPDATE. No DELETE. Ever. Corrections are REVERSAL rows.
@@ -240,12 +318,19 @@ SELECT
   SUM(CASE WHEN scl."differenceQty" < 0
            THEN ABS(scl."differenceQty") ELSE 0 END) AS total_shortage_qty,
   SUM(ABS(scl."differenceQty") * b."averageRate")    AS total_variance_value,
-  COUNT(*) FILTER (WHERE scl."reasonCode" IS NULL
-                      OR scl."reasonCode" = 'UNEXPLAINED')
+  -- Only real differences count as unexplained. (Previously a matching line
+  -- with no reason was counted too, inflating the owner's headline number.)
+  COUNT(*) FILTER (WHERE scl."differenceQty" <> 0
+                     AND (scl."reasonCode" IS NULL
+                          OR scl."reasonCode" = 'UNEXPLAINED'))
                                                    AS unexplained_count,
   MAX(sc."countDate")                              AS last_counted
 FROM stock_count_lines scl
-JOIN stock_counts sc ON sc.id = scl."stockCountId" AND sc.status = 'APPROVED'
+-- The opening count is excluded: on go-live every material "differs" from
+-- zero, and none of that is leakage.
+JOIN stock_counts sc ON sc.id = scl."stockCountId"
+                    AND sc.status = 'APPROVED'
+                    AND sc."isOpening" = false
 JOIN materials m     ON m.id = scl."materialId"
 JOIN stock_balances b ON b."materialId" = m.id
 GROUP BY m.id, m.name, m.uom

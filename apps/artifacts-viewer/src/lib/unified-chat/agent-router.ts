@@ -40,6 +40,9 @@ export async function routeToAgent(message: string, lastRoute?: AgentType): Prom
 
 Watch out:
 - "show me X" / "what is X" / "list X" is "db" — the user wants the answer, not a new screen. It is "artifact" only if they ask to BUILD, MAKE, CREATE, DESIGN or CHANGE a screen, page, dashboard or chart.
+- Adding, creating or updating a business RECORD — a material, party, job, purchase order, count, customer — is "db", even when the message lists several attributes of it (name, unit, quantity, rate, colour of the item itself). That detail is data going INTO the record, not a description of a screen. Only classify as "artifact" when what's being added/changed is part of the SCREEN itself (a column, a button, a chart, a field's position, a page).
+  Examples: "add a material called 22 SWG Copper Wire, unit KG, minimum level 50" is "db" (a data record). "add a minimum-level column to the materials screen" is "artifact" (a screen change).
+- The word "artifact" appearing in the message is not itself evidence either way — judge the actual request. "create an artifact to show the leak report" is "artifact" (explicitly asks to build a screen). "I need to create a material, I don't need an artifact for it" is "db" (explicitly declines a screen).
 - Short follow-ups — "yes", "no", "ok", "100", "the second one", "change it to 50", "go ahead" — belong to whichever agent handled the previous message. Follow the context line below.
 - A request to change how something LOOKS is "artifact" even if short ("bigger", "move it left") when the previous message was "artifact".
 - If unsure, answer "db".

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useSession } from '../../lib/session/session-context';
 import { useArtifactCatalog } from '../../hooks/useArtifactCatalog';
+import { useRecentForms } from '../../hooks/useRecentForms';
 import { chatWithUnifiedAgent, UnifiedChatError } from '../../lib/api/unified-chat-client';
 import type { DbChatResponsePayload, PostWriteOfferPayload } from '../../lib/db-chat/types';
 import type { DisplayMessage } from '../chat/MessageBubble';
@@ -25,6 +26,7 @@ export function WorkspaceShell() {
   const token = session?.accessToken ?? null;
   const { artifacts } = useArtifactCatalog(token);
   const artifactTitles = useMemo(() => Object.fromEntries(artifacts.map((a) => [a.slug, a.title])), [artifacts]);
+  const { recentForms, recordFormOpened } = useRecentForms(session?.email);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -59,6 +61,9 @@ export function WorkspaceShell() {
         setChatOpen(true);
       } else if (result.route === 'db' && result.db && result.db.type !== 'text') {
         setPendingRich(result.db);
+        if (result.db.type === 'form_request') {
+          recordFormOpened({ label: result.db.form.title, toolName: result.db.toolName, form: result.db.form, prefill: result.db.prefill ?? {} });
+        }
       }
     } catch (err) {
       setError(err instanceof UnifiedChatError ? err.message : 'Failed to reach the agent service');
@@ -77,6 +82,7 @@ export function WorkspaceShell() {
       prefill: offer.prefill,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
     });
+    recordFormOpened(offer);
   };
 
   const handleSelectArtifact = (slug: string) => {
@@ -137,6 +143,8 @@ export function WorkspaceShell() {
               onSend={handleSend}
               onOpenArtifact={handleOpenArtifact}
               onSelectOffer={handleSelectOffer}
+              recentForms={recentForms}
+              onSelectRecentForm={handleSelectOffer}
               onFormDone={(next) => {
                 setMessages(next);
                 setPendingRich(null);

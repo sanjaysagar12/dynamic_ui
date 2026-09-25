@@ -29,7 +29,12 @@ async function rehydrateFromCookie(accessToken: string): Promise<Session | null>
     const response = await fetch('/api/tools/whoami', {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      // The dynamic /api/tools/[name] route destructures `args` out of the body and forwards it
+      // straight to tool-service, whose zod schema for a no-arg tool still requires an object
+      // (`{}`), not `undefined` — an empty top-level body left `args` undefined, so this call
+      // 400'd on every single page reload, silently logging the user out (rehydrateFromCookie
+      // returns null on any non-ok response).
+      body: JSON.stringify({ args: {} }),
     });
     const body: WhoamiResult = await response.json();
     if (!response.ok || !body.ok || !body.data) return null;

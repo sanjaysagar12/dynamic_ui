@@ -32,6 +32,10 @@ export interface ChatPanelProps {
   // Called when the user clicks a post-write hook's offer chip — opens that offer's form the same
   // way any other form_request would be opened.
   onSelectOffer: (offer: PostWriteOfferPayload) => void;
+  // The user's most-recently-opened forms, if any — rendered in place of `suggestions` below
+  // (which just send a chat message) since clicking one opens that form directly instead.
+  recentForms?: PostWriteOfferPayload[];
+  onSelectRecentForm?: (offer: PostWriteOfferPayload) => void;
   onFormDone: (messages: DisplayMessage[]) => void;
   onFormMessagesUpdate: (messages: DisplayMessage[]) => void;
   onFormCancel: () => void;
@@ -71,6 +75,8 @@ export function ChatPanel({
   onSend,
   onOpenArtifact,
   onSelectOffer,
+  recentForms,
+  onSelectRecentForm,
   onFormDone,
   onFormMessagesUpdate,
   onFormCancel,
@@ -143,24 +149,49 @@ export function ChatPanel({
 
       <div className="shrink-0 px-4 md:px-6 pb-5">
         <div className={cn('w-full', variant === 'full' && 'max-w-[760px] mx-auto')}>
-          {suggestions && suggestions.length > 0 && !pending && (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {suggestions.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => onSelectSuggestion?.(suggestion)}
-                  className={cn(
-                    'text-[13px] rounded-full px-3.5 py-1.5 border transition-colors',
-                    surface === 'dark'
-                      ? 'text-[var(--panel-dark-text-secondary)] border-[var(--panel-dark-border)] hover:text-[var(--panel-dark-text-primary)] hover:bg-white/5'
-                      : 'text-secondary border-subtle hover:text-primary hover:bg-surface-raised',
-                  )}
-                >
-                  {suggestion}
-                </button>
-              ))}
+          {!pending && recentForms && recentForms.length > 0 ? (
+            <div className="mb-3">
+              <div className="text-[11px] text-tertiary mb-1.5">Continue where you left off</div>
+              <div className="flex flex-wrap gap-2">
+                {recentForms.map((offer) => (
+                  <button
+                    key={offer.toolName}
+                    type="button"
+                    onClick={() => onSelectRecentForm?.(offer)}
+                    className={cn(
+                      'text-[13px] rounded-full px-3.5 py-1.5 border transition-colors',
+                      surface === 'dark'
+                        ? 'text-[var(--panel-dark-text-secondary)] border-[var(--panel-dark-border)] hover:text-[var(--panel-dark-text-primary)] hover:bg-white/5'
+                        : 'text-secondary border-subtle hover:text-primary hover:bg-surface-raised',
+                    )}
+                  >
+                    {offer.label}
+                  </button>
+                ))}
+              </div>
             </div>
+          ) : (
+            suggestions &&
+            suggestions.length > 0 &&
+            !pending && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => onSelectSuggestion?.(suggestion)}
+                    className={cn(
+                      'text-[13px] rounded-full px-3.5 py-1.5 border transition-colors',
+                      surface === 'dark'
+                        ? 'text-[var(--panel-dark-text-secondary)] border-[var(--panel-dark-border)] hover:text-[var(--panel-dark-text-primary)] hover:bg-white/5'
+                        : 'text-secondary border-subtle hover:text-primary hover:bg-surface-raised',
+                    )}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )
           )}
           <PromptComposer
             disabled={pending}

@@ -34,6 +34,11 @@ export interface AssistantPageProps {
   onSend: (message: string) => void;
   onOpenArtifact: (slug: string) => void;
   onSelectOffer: (offer: PostWriteOfferPayload) => void;
+  // The user's most-recently-opened forms — shown as chips in place of the static suggestion
+  // prompts once any exist (see useRecentForms). Clicking one opens it directly, same as an
+  // onSelectOffer chip — no message is sent to the agent.
+  recentForms: PostWriteOfferPayload[];
+  onSelectRecentForm: (offer: PostWriteOfferPayload) => void;
   onFormDone: (messages: DisplayMessage[]) => void;
   onFormMessagesUpdate: (messages: DisplayMessage[]) => void;
   onFormCancel: () => void;

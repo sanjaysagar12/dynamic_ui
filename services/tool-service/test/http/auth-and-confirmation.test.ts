@@ -220,18 +220,19 @@ describe('HTTP auth + confirmation contract', () => {
     expect(res.body.ok).toBe(true);
   });
 
-  it('POST /tools/start_stock_count/execute with confirmed omitted returns 409 and writes nothing (Batch F)', async () => {
+  it('POST /tools/submit_stock_count/execute with confirmed omitted returns 409 and writes nothing (Batch F)', async () => {
     const { accessToken } = await createTestUser(prisma, { role: 'STOREKEEPER' });
-    const before = await prisma.stockCount.count();
+    const stockCount = await createStockCount(prisma);
+    const before = await prisma.stockCount.count({ where: { status: 'PENDING_APPROVAL' } });
 
     const res = await request(testApp.baseUrl)
-      .post('/tools/start_stock_count/execute')
+      .post('/tools/submit_stock_count/execute')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ args: { countDate: new Date().toISOString() } });
+      .send({ args: { stockCountId: stockCount.id } });
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe('CONFIRMATION_REQUIRED');
-    const after = await prisma.stockCount.count();
+    const after = await prisma.stockCount.count({ where: { status: 'PENDING_APPROVAL' } });
     expect(after).toBe(before);
   });
 
